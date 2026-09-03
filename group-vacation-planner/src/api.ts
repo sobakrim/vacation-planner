@@ -1,0 +1,115 @@
+import { supabase } from './supabase'
+import type { GroupMember, GroupSummary, VacationEntry, VacationRequest, VacationStatus } from './types'
+
+function unwrap<T>(data: T | null, error: { message: string } | null): T {
+  if (error) throw new Error(error.message)
+  if (data == null) throw new Error('The server returned no data.')
+  return data
+}
+
+export async function claimMemberships() {
+  const { error } = await supabase.rpc('claim_memberships')
+  if (error) throw new Error(error.message)
+}
+
+export async function getMyGroups(): Promise<GroupSummary[]> {
+  const { data, error } = await supabase.rpc('get_my_groups')
+  if (error) throw new Error(error.message)
+  return (data ?? []) as GroupSummary[]
+}
+
+export async function createGroup(name: string, leaderName: string): Promise<string> {
+  const { data, error } = await supabase.rpc('create_group', {
+    p_name: name,
+    p_leader_name: leaderName,
+  })
+  return unwrap(data as string | null, error)
+}
+
+export async function getCalendar(
+  groupId: string,
+  fromDate: string,
+  toDate: string,
+): Promise<VacationEntry[]> {
+  const { data, error } = await supabase.rpc('get_group_calendar', {
+    p_group_id: groupId,
+    p_from: fromDate,
+    p_to: toDate,
+  })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as VacationEntry[]
+}
+
+export async function getMyRequests(groupId: string): Promise<VacationRequest[]> {
+  const { data, error } = await supabase.rpc('get_my_vacation_requests', {
+    p_group_id: groupId,
+  })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as VacationRequest[]
+}
+
+export async function getPendingRequests(groupId: string): Promise<VacationRequest[]> {
+  const { data, error } = await supabase.rpc('get_pending_vacation_requests', {
+    p_group_id: groupId,
+  })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as VacationRequest[]
+}
+
+export async function getGroupMembers(groupId: string): Promise<GroupMember[]> {
+  const { data, error } = await supabase.rpc('get_group_members', {
+    p_group_id: groupId,
+  })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as GroupMember[]
+}
+
+export async function addGroupMember(groupId: string, email: string, name: string) {
+  const { error } = await supabase.rpc('add_group_member', {
+    p_group_id: groupId,
+    p_email: email,
+    p_display_name: name,
+  })
+  if (error) throw new Error(error.message)
+}
+
+export async function removeGroupMember(groupId: string, memberId: string) {
+  const { error } = await supabase.rpc('remove_group_member', {
+    p_group_id: groupId,
+    p_member_id: memberId,
+  })
+  if (error) throw new Error(error.message)
+}
+
+export async function requestVacation(
+  groupId: string,
+  startDate: string,
+  endDate: string,
+  note: string,
+): Promise<{ request_id: string; status: VacationStatus }> {
+  const { data, error } = await supabase.rpc('request_vacation', {
+    p_group_id: groupId,
+    p_start_date: startDate,
+    p_end_date: endDate,
+    p_note: note || null,
+  })
+  if (error) throw new Error(error.message)
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row) throw new Error('The server returned no vacation request.')
+  return row as { request_id: string; status: VacationStatus }
+}
+
+export async function reviewVacation(requestId: string, decision: 'approved' | 'rejected') {
+  const { error } = await supabase.rpc('review_vacation', {
+    p_request_id: requestId,
+    p_decision: decision,
+  })
+  if (error) throw new Error(error.message)
+}
+
+export async function withdrawVacation(requestId: string) {
+  const { error } = await supabase.rpc('withdraw_vacation', {
+    p_request_id: requestId,
+  })
+  if (error) throw new Error(error.message)
+}

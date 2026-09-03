@@ -1,0 +1,2 @@
+[functions.notify-vacation-request]
+verify_jwt = true
