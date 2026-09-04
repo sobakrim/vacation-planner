@@ -2,7 +2,7 @@
 
 A privacy-conscious vacation calendar for a team or research group.
 
-## v0.3 highlights
+## Current highlights
 
 - Real **email + password accounts**.
 - First visit: choose **Sign in** or **Create account**.
@@ -30,6 +30,9 @@ A privacy-conscious vacation calendar for a team or research group.
 - Each person sees only their own vacation balance in **My vacation**.
 - Group leaders can see every member's balance in **Members**.
 - New members start with an annual allowance of **25 days**; leaders can change it.
+- The contract-start year is prorated to the nearest half day.
+- Positive and negative approved balances automatically carry into following years.
+- Half-day vacation is supported.
 - Saturdays, Sundays, and official Canton of Vaud public holidays are not charged.
 - Vaud public holidays for **2026–2031** are bundled and displayed in the shared calendar.
 
@@ -77,6 +80,8 @@ Run these files in order in **Supabase → SQL Editor**:
 supabase/001_init.sql
 supabase/002_balances_holidays_cancellation.sql
 supabase/003_accounts_multi_leaders.sql
+supabase/004_contract_proration_half_days.sql
+supabase/005_balance_carryover.sql
 ```
 
 ### 2. Configure authentication URLs
@@ -184,10 +189,8 @@ Sign in
 
 ## Current limitations
 
-- Whole-day vacation only; no half-days yet.
-- The annual allowance value is the same for every year until changed.
+- The annual full-year allowance value is the same for every year until changed.
 - Public-holiday data is bundled through 2031 and should be updated later.
-- No automatic carry-over.
 - No approval/rejection notification email to the requester yet.
 - No owner-transfer workflow yet. The original leader cannot currently transfer ownership to another account.
 
@@ -231,3 +234,25 @@ A one-day request can be:
 For a multi-day request, the first day may start in the afternoon and/or the last day may end after the morning. The shared calendar marks half-days with `AM` or `PM`.
 
 The database overlap check is half-day aware, so a morning vacation and an afternoon vacation on the same date do not conflict.
+
+## v0.5 — automatic year-to-year carry-over
+
+Existing v0.4 installations should run this migration once in **Supabase → SQL Editor**:
+
+```text
+supabase/005_balance_carryover.sql
+```
+
+No Edge Function redeploy and no new environment variables are required for v0.5.
+
+Carry-over is calculated dynamically from approved vacation history:
+
+```text
+closing balance of previous years
+= accrued entitlement - approved vacation
+
+current-year balance
+= current-year entitlement + carry-over - approved vacation
+```
+
+Both positive and negative balances are carried forward. Pending requests remain visible separately and do not affect the official carry-over until they are approved. The first contract year remains prorated, while later complete years use the member's full-year entitlement.

@@ -396,11 +396,11 @@ function CreateGroupScreen({
         <form onSubmit={submit} className="stack-form two-column-form">
           <label>
             Group name
-            <input required value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="ECCE team" />
+            <input required value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="Team or department" />
           </label>
           <label>
             Your display name
-            <input required value={leaderName} onChange={(e) => setLeaderName(e.target.value)} placeholder="Said" />
+            <input required value={leaderName} onChange={(e) => setLeaderName(e.target.value)} placeholder="Your name" />
           </label>
           <div className="identity-line">Leader account: <strong>{email}</strong></div>
           <button className="primary" disabled={busy}>{busy ? 'Creating…' : 'Create group'}</button>
@@ -834,15 +834,16 @@ function MyVacationView({
         {balanceLoading || !balance ? <InlineLoading /> : balance.contract_start_date == null ? (
           <div className="balance-missing">Set your contract start date above to calculate your prorated allowance.</div>
         ) : (
-          <div className="balance-stats balance-stats-five">
+          <div className="balance-stats balance-stats-six">
             <div className="balance-primary"><strong>{balance.remaining_days}</strong><span>days left</span></div>
-            <div><strong>{balance.allowance_days}</strong><span>prorated allowance</span></div>
+            <div><strong>{balance.allowance_days}</strong><span>current-year entitlement</span></div>
+            <div><strong>{balance.carryover_days > 0 ? '+' : ''}{balance.carryover_days}</strong><span>carried from previous years</span></div>
             <div><strong>{balance.full_year_allowance_days}</strong><span>full-year entitlement</span></div>
             <div><strong>{balance.used_days}</strong><span>approved / booked</span></div>
             <div><strong>{balance.pending_days}</strong><span>pending</span></div>
           </div>
         )}
-        <p className="balance-note">The joining year is prorated by the exact contract start date and rounded to the nearest half day. Charged days exclude Saturdays, Sundays, and official Canton of Vaud public holidays.</p>
+        <p className="balance-note">The joining year is prorated by the exact contract start date and rounded to the nearest half day. Positive and negative approved balances carry automatically into every following year. Pending requests are shown separately and are not carried until approved. Charged days exclude Saturdays, Sundays, and official Canton of Vaud public holidays.</p>
       </section>
 
       <div className="list-card request-list-card">
@@ -1126,7 +1127,7 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
                   {balance && balance.contract_start_date ? (
                     <div className="leader-balance-summary">
                       <strong>{balance.remaining_days} left</strong>
-                      <span>{balance.used_days} approved · {balance.pending_days} pending · {balance.allowance_days} prorated / {balance.full_year_allowance_days} full-year</span>
+                      <span>{balance.carryover_days > 0 ? '+' : ''}{balance.carryover_days} carry-over · {balance.used_days} approved · {balance.pending_days} pending · {balance.allowance_days} current-year / {balance.full_year_allowance_days} full-year</span>
                     </div>
                   ) : (
                     <div className="leader-balance-summary missing-contract">
@@ -1199,8 +1200,8 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
           <h3>Give someone access</h3>
           <p>Enter the exact email address they will use to create their account. You can enter their contract start date now, or leave it blank and let them set it after signing in.</p>
           <form className="stack-form" onSubmit={add}>
-            <label>Name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Name " /></label>
-            <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.org" /></label>
+            <label>Name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Team member" /></label>
+            <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="member@example.org" /></label>
             <label>Contract start date <span className="optional">optional</span>
               <input type="date" value={contractStart} onChange={(e) => setContractStart(e.target.value)} />
             </label>

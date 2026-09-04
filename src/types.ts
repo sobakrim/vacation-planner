@@ -47,6 +47,8 @@ export interface VacationBalance {
   year: number
   full_year_allowance_days: number
   allowance_days: number | null
+  carryover_days: number
+  total_available_days: number | null
   used_days: number
   pending_days: number
   remaining_days: number | null

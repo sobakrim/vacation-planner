@@ -1,0 +1,13 @@
+Group Vacation Planner v0.5 update — clean package
+
+This package contains no Git merge-conflict markers. Files are stored at the archive root and are intended to overwrite the corresponding v0.4 files.
+
+After extraction, verify with:
+  grep -R -n -E '^(<<<<<<<|=======|>>>>>>>)' src || true
+
+Then run:
+  npm install
+  npm run build
+
+Database migration to run in Supabase:
+  supabase/005_balance_carryover.sql

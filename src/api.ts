@@ -73,7 +73,7 @@ export async function getGroupMembers(groupId: string): Promise<GroupMember[]> {
 }
 
 export async function getMyVacationBalance(groupId: string, year: number): Promise<VacationBalance> {
-  const { data, error } = await supabase.rpc('get_my_vacation_balance_v2', {
+  const { data, error } = await supabase.rpc('get_my_vacation_balance_v3', {
     p_group_id: groupId,
     p_year: year,
   })
@@ -84,7 +84,7 @@ export async function getMyVacationBalance(groupId: string, year: number): Promi
 }
 
 export async function getGroupVacationBalances(groupId: string, year: number): Promise<MemberVacationBalance[]> {
-  const { data, error } = await supabase.rpc('get_group_vacation_balances_v2', {
+  const { data, error } = await supabase.rpc('get_group_vacation_balances_v3', {
     p_group_id: groupId,
     p_year: year,
   })

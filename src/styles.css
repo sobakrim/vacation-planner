@@ -266,7 +266,7 @@ blockquote { margin: 14px 0; padding: 10px 12px; background: #f7f8f5; border-lef
 .contract-card p:not(.eyebrow) { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; max-width: 620px; }
 .contract-editor { display: flex; gap: 8px; align-items: end; min-width: 285px; }
 .contract-editor input { min-width: 170px; }
-.balance-stats-five { grid-template-columns: 1.3fr repeat(4,1fr); }
+.balance-stats-six { grid-template-columns: 1.3fr repeat(5,1fr); }
 .balance-missing { margin-top: 16px; border: 1px dashed #d7c6a6; background: #fff9ee; color: #765926; padding: 14px; border-radius: 10px; font-size: 13px; }
 .member-settings { display: grid; gap: 8px; min-width: 185px; }
 .contract-member-editor { display: flex; align-items: flex-end; gap: 6px; }
@@ -274,13 +274,16 @@ blockquote { margin: 14px 0; padding: 10px 12px; background: #f7f8f5; border-lef
 .contract-member-editor input { width: 132px; padding: 7px 8px; }
 .leader-balance-summary.missing-contract strong { color: #9a6b24; }
 @media (max-width: 1100px) {
-  .balance-stats-five { grid-template-columns: repeat(3,1fr); }
+  .balance-stats-six { grid-template-columns: repeat(3,1fr); }
   .member-settings { width: 100%; margin-left: 55px; grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 700px) {
   .contract-card { align-items: stretch; flex-direction: column; }
   .contract-editor { min-width: 0; }
   .contract-editor input { flex: 1; min-width: 0; }
-  .balance-stats-five { grid-template-columns: repeat(2,1fr); }
+  .balance-stats-six { grid-template-columns: repeat(2,1fr); }
   .member-settings { margin-left: 0; grid-template-columns: 1fr; }
 }
+
+/* v0.5: year-to-year carry-over */
+.balance-stats-six strong { font-variant-numeric: tabular-nums; }
