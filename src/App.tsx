@@ -1199,8 +1199,8 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
           <h3>Give someone access</h3>
           <p>Enter the exact email address they will use to create their account. You can enter their contract start date now, or leave it blank and let them set it after signing in.</p>
           <form className="stack-form" onSubmit={add}>
-            <label>Name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Lena Wilhelm" /></label>
-            <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="lena@example.org" /></label>
+            <label>Name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Name " /></label>
+            <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.org" /></label>
             <label>Contract start date <span className="optional">optional</span>
               <input type="date" value={contractStart} onChange={(e) => setContractStart(e.target.value)} />
             </label>
