@@ -196,3 +196,65 @@ blockquote { margin: 14px 0; padding: 10px 12px; background: #f7f8f5; border-lef
   .date-row { grid-template-columns: 1fr; }
   .auth-card, .create-card { padding: 26px 20px; }
 }
+
+/* Vacation balances and Vaud public holidays */
+.calendar-day.weekend:not(.public-holiday) { background: #fbfaf7; }
+.calendar-day.public-holiday { background: #fff8f0; }
+.holiday-chip { display: block; border-radius: 6px; padding: 4px 6px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #f8e6d4; color: #85521f; border-left: 3px solid #d18b45; font-weight: 800; }
+.calendar-legend { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; padding: 12px 4px 0; color: var(--muted); font-size: 12px; }
+.calendar-legend > span { display: inline-flex; align-items: center; gap: 7px; }
+.legend-swatch { width: 13px; height: 13px; border-radius: 4px; display: inline-block; }
+.legend-swatch.vacation { background: #e3eee6; border-left: 3px solid #557d69; }
+.legend-swatch.holiday { background: #f8e6d4; border-left: 3px solid #d18b45; }
+.legend-note { margin-left: auto; }
+.balance-card { background: linear-gradient(135deg, #eef4ef, #f8faf7); border: 1px solid #d8e4da; border-radius: 16px; padding: 20px; margin-bottom: 18px; box-shadow: 0 6px 28px rgba(34,51,43,.03); }
+.balance-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.balance-card-heading h2 { margin: 0; font-size: 24px; }
+.year-select { width: auto; min-width: 96px; }
+.balance-stats { display: grid; grid-template-columns: 1.3fr repeat(3,1fr); gap: 10px; margin-top: 16px; }
+.balance-stats > div { background: rgba(255,255,255,.72); border: 1px solid rgba(209,222,211,.9); border-radius: 12px; padding: 14px; display: grid; gap: 3px; }
+.balance-stats strong { font-size: 22px; letter-spacing: -.03em; }
+.balance-stats span { color: var(--muted); font-size: 11px; }
+.balance-primary strong { color: var(--accent); font-size: 31px; }
+.balance-note { margin: 12px 0 0; color: var(--muted); font-size: 11px; }
+.request-list-card { margin-top: 0; }
+.status-dot.cancelled { background: #969d98; }
+.status-pill.cancelled { background: #eceeec; color: #68716c; }
+.member-balance-row { align-items: flex-start; }
+.leader-balance-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px; margin-top: 4px; }
+.leader-balance-summary strong { color: var(--accent); font-size: 13px; }
+.leader-balance-summary span { white-space: normal; }
+.allowance-editor { display: flex; align-items: flex-end; gap: 6px; min-width: 150px; }
+.allowance-editor label { font-size: 10px; color: var(--muted); gap: 3px; }
+.allowance-editor input { width: 76px; padding: 7px 8px; }
+.compact-button { padding: 7px 9px; font-size: 12px; }
+.year-filter { min-width: 115px; color: var(--muted); }
+.year-filter select { padding: 9px 10px; }
+@media (max-width: 1100px) {
+  .member-balance-row { flex-wrap: wrap; }
+  .member-balance-row .member-main { min-width: calc(100% - 70px); }
+  .allowance-editor { margin-left: 55px; }
+}
+@media (max-width: 700px) {
+  .balance-stats { grid-template-columns: repeat(2,1fr); }
+  .legend-note { width: 100%; margin-left: 0; }
+  .allowance-editor { margin-left: 0; width: 100%; }
+}
+
+/* v0.3 account flow + multiple leaders */
+.auth-card-wide { width: min(600px, 100%); }
+.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: #f0f3ef; border-radius: 12px; padding: 5px; margin: -5px 0 20px; }
+.auth-tabs button { border: 0; border-radius: 9px; background: transparent; color: var(--muted); padding: 10px 12px; font-weight: 750; }
+.auth-tabs button.active { background: #fff; color: var(--ink); box-shadow: 0 2px 8px rgba(30,42,36,.08); }
+.auth-link { justify-self: center; border: 0; background: transparent; color: var(--accent); font-size: 12px; font-weight: 750; padding: 2px 6px; }
+.auth-link:hover { text-decoration: underline; }
+.member-role-stack { display: grid; gap: 5px; justify-items: start; }
+.you-pill { display: inline-flex; width: max-content; border-radius: 999px; padding: 3px 7px; background: #edf0f7; color: #56617b; font-size: 10px; font-weight: 800; }
+.leader-toggle { min-width: 114px; white-space: nowrap; }
+@media (max-width: 1100px) {
+  .leader-toggle { margin-left: 55px; }
+}
+@media (max-width: 700px) {
+  .leader-toggle { margin-left: 0; width: 100%; }
+  .member-role-stack { min-width: 110px; }
+}

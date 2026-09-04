@@ -1,5 +1,5 @@
 export type Role = 'leader' | 'member'
-export type VacationStatus = 'pending' | 'approved' | 'rejected'
+export type VacationStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 
 export interface GroupSummary {
   group_id: string
@@ -33,4 +33,21 @@ export interface GroupMember {
   email: string
   role: Role
   joined: boolean
+  is_owner: boolean
+  is_me: boolean
+}
+
+export interface VacationBalance {
+  year: number
+  allowance_days: number
+  used_days: number
+  pending_days: number
+  remaining_days: number
+}
+
+export interface MemberVacationBalance extends VacationBalance {
+  member_id: string
+  display_name: string
+  email: string
+  role: Role
 }

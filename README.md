@@ -1,108 +1,122 @@
 # Group Vacation Planner
 
-A small, privacy-conscious vacation calendar for a team or research group.
+A privacy-conscious vacation calendar for a team or research group.
 
-## Workflow
+## v0.3 highlights
 
-- The group leader creates the group and adds each member's email address.
-- Everyone signs in with a magic link sent to their email.
-- Every group member can see the shared calendar of **approved** vacations.
-- A normal member submits a vacation request. It stays **pending** and an email is sent to the leader.
-- The leader approves or rejects the request inside the app.
+- Real **email + password accounts**.
+- First visit: choose **Sign in** or **Create account**.
+- Account creation is email-first: the user enters an email, receives a verification link, opens it, then chooses a password.
+- Password recovery is available from the sign-in screen.
+- A group can have **multiple leaders**.
+- The person who originally creates the group is the **Original leader / owner**.
+- Only that original leader can grant or remove leader rights.
+- All group leaders can approve/reject vacation, manage normal members, see group vacation balances, and change annual allowances.
+- Vacation-request notification emails are sent to all current group leaders.
+
+## Vacation workflow
+
+- The original leader creates the group and adds each member's exact email address.
+- Every person creates their own account with that email.
+- Members see the shared calendar of **approved** vacations.
+- A normal member submits a vacation request. It stays **pending** and an email is sent to the group leaders.
+- Any group leader may approve or reject it.
 - An approved request immediately appears in the shared calendar.
-- The leader's own vacation is approved immediately and does not require another person to validate it.
+- A leader's own vacation is approved immediately.
+- A user can cancel their own approved vacation before it starts. Cancellation is immediate, restores the balance, and sends no leader notification.
+
+## Vacation balance
+
+- Each person sees only their own vacation balance in **My vacation**.
+- Group leaders can see every member's balance in **Members**.
+- New members start with an annual allowance of **25 days**; leaders can change it.
+- Saturdays, Sundays, and official Canton of Vaud public holidays are not charged.
+- Vaud public holidays for **2026–2031** are bundled and displayed in the shared calendar.
 
 ## Stack
 
 - React + TypeScript + Vite
 - GitHub Pages for the frontend
-- Supabase Auth (email magic-link login)
-- Supabase Postgres for groups, members, requests, and approvals
-- Supabase Edge Function + Resend for the leader notification email
+- Supabase Auth for account creation, email verification, passwords, and password reset
+- Supabase Postgres for groups, memberships, requests, balances, and authorization
+- Supabase Edge Function + Resend for leader notification emails
 
-## Security model
+## Existing installation: update from v0.2
 
-- Users must authenticate by email before any app RPC can be called.
-- The leader explicitly whitelists member email addresses for each group.
-- The browser has no direct SELECT/INSERT/UPDATE/DELETE permission on the application tables.
-- All browser data access is through security-definer RPC functions that validate `auth.uid()` and the authenticated email.
-- The Resend API key and Supabase secret key are never placed in the frontend or GitHub Pages build.
-- The email Edge Function verifies the calling user's JWT and checks that the caller created the pending request before sending the leader an email.
-- Only approved vacations are returned by the shared-calendar RPC.
+If you already have v0.2 deployed and have already run `001_init.sql` and `002_balances_holidays_cancellation.sql`:
 
-This is an MVP, not a formally audited HR system. For sensitive institutional deployment, have your IT/security team review the schema and email setup first.
+1. Replace/update the repository files with v0.3.
+2. In Supabase open **SQL Editor → New query**.
+3. Run only:
 
-## 1. Create a Supabase project
+```text
+supabase/003_accounts_multi_leaders.sql
+```
 
-Create a new Supabase project, then open **SQL Editor → New query** and run the complete contents of:
+4. Redeploy the notification function because it now emails all leaders:
+
+```bash
+supabase functions deploy notify-vacation-request
+```
+
+5. Push the frontend update to `main`.
+
+No new GitHub variables and no new Resend secrets are required.
+
+### Existing users from the old magic-link version
+
+Existing authenticated users do not need a new Supabase user record. The new app detects that their account has not finished password setup and asks them to choose a password. If they are signed out, they can choose **Create account**, enter the same email, open the email link, and set a password.
+
+## New installation
+
+### 1. Create Supabase and run SQL
+
+Run these files in order in **Supabase → SQL Editor**:
 
 ```text
 supabase/001_init.sql
+supabase/002_balances_holidays_cancellation.sql
+supabase/003_accounts_multi_leaders.sql
 ```
 
-You do not need to create any tables manually.
+### 2. Configure authentication URLs
 
-## 2. Configure email login in Supabase
-
-In Supabase go to **Authentication → URL Configuration**.
-
-For local development, add:
+In **Supabase → Authentication → URL Configuration**, add your frontend URLs, for example:
 
 ```text
 http://localhost:5173/
-```
-
-For GitHub Pages add your final URL, for example:
-
-```text
 https://YOUR_USERNAME.github.io/group-vacation-planner/
 ```
 
-Use that GitHub Pages address as the Site URL once the app is deployed.
+Use the GitHub Pages URL as the Site URL after deployment. The app uses these URLs for account-verification and password-reset redirects.
 
-The frontend uses `supabase.auth.signInWithOtp()`, which sends a magic link by email.
+### 3. Frontend variables
 
-## 3. Frontend environment variables
-
-Copy the project URL and the **publishable key** from Supabase.
-
-For local development:
-
-```bash
-cp .env.example .env.local
-```
-
-Then fill:
+The frontend needs only:
 
 ```env
 VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 ```
 
-Never put a Supabase secret/service-role key in a `VITE_...` variable.
+For GitHub Pages add them under:
 
-## 4. Install and test locally
+**Settings → Secrets and variables → Actions → Variables**
+
+Never expose a Supabase secret/service-role key in a `VITE_...` variable.
+
+### 4. Install and build
 
 Requires Node 24 or newer.
 
 ```bash
 npm install
-npm run dev
-```
-
-Production build:
-
-```bash
 npm run build
 ```
 
-## 5. Configure the leader notification email
+### 5. Configure leader notification email
 
-The included Supabase Edge Function uses Resend.
-
-Create a Resend account and API key. For production email delivery, verify a sending domain in Resend.
-
-Set these three **Supabase Edge Function secrets**:
+The Edge Function uses Resend. Keep these as Supabase Edge Function secrets:
 
 ```text
 RESEND_API_KEY=re_...
@@ -110,19 +124,7 @@ VACATION_EMAIL_FROM=Vacation Planner <vacation@YOUR_VERIFIED_DOMAIN>
 APP_URL=https://YOUR_USERNAME.github.io/group-vacation-planner/
 ```
 
-You can set them in the Supabase dashboard under Edge Functions / Secrets, or with the Supabase CLI:
-
-```bash
-supabase secrets set RESEND_API_KEY=re_...
-supabase secrets set 'VACATION_EMAIL_FROM=Vacation Planner <vacation@YOUR_VERIFIED_DOMAIN>'
-supabase secrets set APP_URL=https://YOUR_USERNAME.github.io/group-vacation-planner/
-```
-
-Supabase provides its own project URL and server-side API keys to hosted Edge Functions; do not copy those into the repository.
-
-## 6. Deploy the Edge Function
-
-Install/login to the Supabase CLI, link the project, and deploy:
+Deploy:
 
 ```bash
 supabase login
@@ -130,77 +132,65 @@ supabase link --project-ref YOUR_PROJECT_REF
 supabase functions deploy notify-vacation-request
 ```
 
-The function source is:
+### 6. Deploy GitHub Pages
 
-```text
-supabase/functions/notify-vacation-request/index.ts
-```
-
-If the email service is temporarily unavailable, the vacation request is still saved in the database and remains visible to the leader in the **Approvals** tab. The frontend displays a warning that only the notification failed.
-
-## 7. Deploy the website to GitHub Pages
-
-Create a GitHub repository and put the project files at the repository root.
-
-In GitHub create these repository **Actions variables**:
-
-```text
-VITE_SUPABASE_URL
-VITE_SUPABASE_PUBLISHABLE_KEY
-```
-
-Path:
-
-**Settings → Secrets and variables → Actions → Variables**
-
-Then go to:
+Choose:
 
 **Settings → Pages → Build and deployment → Source → GitHub Actions**
 
-The included workflow:
+The included `.github/workflows/deploy-pages.yml` builds and deploys on pushes to `main`.
+
+## Account flow
+
+### New user
 
 ```text
-.github/workflows/deploy-pages.yml
+Open app
+  → Create account
+  → enter email
+  → receive verification email
+  → open link
+  → choose + confirm password
+  → account ready
+  → matching group memberships appear automatically
 ```
 
-runs `npm install`, builds the Vite app, and deploys `dist/` to Pages on every push to `main`.
-
-The URL will normally be:
+### Existing user
 
 ```text
-https://YOUR_USERNAME.github.io/YOUR_REPOSITORY/
+Open app
+  → Sign in
+  → email + password
 ```
 
-## 8. First use
+### Forgotten password
 
-1. Open the website.
-2. Enter your email and click the magic link you receive.
-3. Create the group. You become its leader.
-4. Open **Members** and add each person's name and exact login email.
-5. Send the website URL to the group.
-6. A member signs in with the email you added.
-7. The group appears automatically for that member.
-8. The member submits vacation dates.
-9. The leader receives an email and opens **Approvals**.
-10. After approval, the vacation appears for everybody in **Calendar**.
+```text
+Sign in
+  → Forgot your password?
+  → receive reset link
+  → choose new password
+```
 
-## Current behavior
+## Multi-leader rules
 
-- One account can belong to more than one group.
-- Only the leader sees member email addresses and pending requests.
-- All group members see names and approved vacation dates in the shared calendar.
-- Pending/rejected requests are visible to the requester and the leader, not the rest of the group.
-- A member can withdraw their own pending request.
-- The leader's requests are automatically approved.
-- Overlapping pending/approved requests by the same person are blocked.
-- Vacation duration is calendar days, not business days.
+- The first person to create a group is its permanent **Original leader / owner** in this MVP.
+- The original leader can add a new person directly as a **Group leader**, or promote an existing member.
+- The original leader can demote an additional leader back to Member.
+- Additional leaders cannot promote/demote other leaders.
+- All leaders can approve/reject requests, add ordinary members, see all balances, and edit allowances.
+- All leaders' own vacation requests are auto-approved.
+- Pending-request notification emails are sent to all leader email addresses.
 
-## Possible next improvements
+## Current limitations
 
-- Email the requester when a request is approved/rejected.
-- Add half-days.
-- Count business days and local public holidays.
-- Add yearly entitlement / remaining vacation balance.
-- Add team-wide absence limits (for example no more than 2 people away at once).
-- Add an Outlook/Google Calendar export for approved vacation.
-- Add a leader dashboard with yearly statistics.
+- Whole-day vacation only; no half-days yet.
+- The annual allowance value is the same for every year until changed.
+- Public-holiday data is bundled through 2031 and should be updated later.
+- No automatic carry-over.
+- No approval/rejection notification email to the requester yet.
+- No owner-transfer workflow yet. The original leader cannot currently transfer ownership to another account.
+
+## License
+
+MIT

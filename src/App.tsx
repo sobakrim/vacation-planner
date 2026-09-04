@@ -2,29 +2,36 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
   addGroupMember,
+  cancelVacation,
   claimMemberships,
   createGroup,
+  demoteGroupLeader,
   getCalendar,
   getGroupMembers,
+  getGroupVacationBalances,
   getMyGroups,
   getMyRequests,
+  getMyVacationBalance,
   getPendingRequests,
+  promoteGroupLeader,
   removeGroupMember,
   requestVacation,
   reviewVacation,
+  setMemberAllowance,
   withdrawVacation,
 } from './api'
 import {
   addDays,
-  daysInclusive,
   endOfCalendarMonth,
   entriesForDate,
   formatRange,
   isoDate,
   startOfCalendarMonth,
+  workingDaysInclusive,
 } from './calendar'
 import { supabase } from './supabase'
-import type { GroupMember, GroupSummary, VacationEntry, VacationRequest } from './types'
+import type { GroupMember, GroupSummary, MemberVacationBalance, VacationBalance, VacationEntry, VacationRequest } from './types'
+import { getVaudPublicHoliday } from './vaudHolidays'
 
 type Tab = 'calendar' | 'mine' | 'approvals' | 'members'
 type Notice = { type: 'success' | 'warning' | 'error'; text: string } | null
@@ -32,6 +39,7 @@ type Notice = { type: 'success' | 'warning' | 'error'; text: string } | null
 function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [authReady, setAuthReady] = useState(false)
+  const [passwordReadyOverride, setPasswordReadyOverride] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -47,23 +55,84 @@ function App() {
 
   if (!authReady) return <LoadingScreen label="Opening vacation planner…" />
   if (!session) return <LoginScreen />
+
+  const params = new URLSearchParams(window.location.search)
+  const passwordFlow = params.get('setup') === '1' || params.get('reset') === '1'
+  const passwordSet = session.user.user_metadata?.password_set === true
+  if (!passwordReadyOverride && (passwordFlow || !passwordSet)) {
+    return (
+      <SetPasswordScreen
+        email={session.user.email ?? ''}
+        recovery={params.get('reset') === '1'}
+        onDone={() => {
+          setPasswordReadyOverride(true)
+          window.history.replaceState({}, '', window.location.pathname)
+        }}
+      />
+    )
+  }
+
   return <AuthenticatedApp session={session} />
 }
 
+type AuthMode = 'signin' | 'signup' | 'reset'
+
 function LoginScreen() {
+  const [mode, setMode] = useState<AuthMode>('signin')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [sent, setSent] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  async function signIn(event: React.FormEvent) {
+  function switchMode(next: AuthMode) {
+    setMode(next)
+    setSent(false)
+    setError('')
+    setPassword('')
+  }
+
+  function appRedirect(flag: 'setup' | 'reset') {
+    const url = new URL(`${window.location.origin}${import.meta.env.BASE_URL}`)
+    url.searchParams.set(flag, '1')
+    return url.toString()
+  }
+
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
     setBusy(true)
     setError('')
-    const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`
-    const { error: authError } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: redirectTo },
+
+    if (mode === 'signin') {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      })
+      setBusy(false)
+      if (authError) setError(authError.message)
+      return
+    }
+
+    if (mode === 'signup') {
+      const { error: authError } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: appRedirect('setup'),
+          data: { password_set: false },
+        },
+      })
+      setBusy(false)
+      if (authError) {
+        setError(authError.message)
+        return
+      }
+      setSent(true)
+      return
+    }
+
+    const { error: authError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: appRedirect('reset'),
     })
     setBusy(false)
     if (authError) {
@@ -73,24 +142,39 @@ function LoginScreen() {
     setSent(true)
   }
 
+  const title = mode === 'signin' ? 'Connect to your profile' : mode === 'signup' ? 'Create your account' : 'Reset your password'
+  const copy = mode === 'signin'
+    ? 'Use the email and password attached to your vacation profile.'
+    : mode === 'signup'
+      ? 'Enter your email first. We will send a verification link; after opening it, you choose your password.'
+      : 'Enter your account email and we will send a secure password-reset link.'
+
   return (
     <main className="auth-shell">
-      <section className="auth-card">
+      <section className="auth-card auth-card-wide">
         <div className="brand-mark">V</div>
         <p className="eyebrow">GROUP VACATION</p>
-        <h1>One calendar for the whole team.</h1>
-        <p className="lead">
-          Sign in by email, request time off, and keep approved vacations visible to everyone in the group.
-        </p>
+        <h1>{title}</h1>
+        <p className="lead">{copy}</p>
+
+        <div className="auth-tabs" role="tablist" aria-label="Account access">
+          <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => switchMode('signin')}>Sign in</button>
+          <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => switchMode('signup')}>Create account</button>
+        </div>
+
         {sent ? (
           <div className="message success">
             <strong>Check your inbox.</strong>
-            <span>We sent a secure sign-in link to {email}.</span>
+            <span>
+              {mode === 'signup'
+                ? `Open the verification link sent to ${email}. You will then choose your password.`
+                : `Open the password-reset link sent to ${email}.`}
+            </span>
           </div>
         ) : (
-          <form onSubmit={signIn} className="stack-form">
+          <form onSubmit={submit} className="stack-form">
             <label>
-              Work email
+              Email
               <input
                 type="email"
                 required
@@ -100,13 +184,94 @@ function LoginScreen() {
                 autoComplete="email"
               />
             </label>
+            {mode === 'signin' && (
+              <label>
+                Password
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
+              </label>
+            )}
             <button className="primary" disabled={busy}>
-              {busy ? 'Sending…' : 'Email me a sign-in link'}
+              {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Send verification email' : 'Send reset email'}
             </button>
+            {mode === 'signin' && (
+              <button type="button" className="auth-link" onClick={() => switchMode('reset')}>Forgot your password?</button>
+            )}
+            {mode === 'reset' && (
+              <button type="button" className="auth-link" onClick={() => switchMode('signin')}>Back to sign in</button>
+            )}
             {error && <p className="form-error">{error}</p>}
           </form>
         )}
-        <p className="microcopy">No password. Access is tied to the email address registered in your group.</p>
+        <p className="microcopy">Group access is still controlled by the email address that a group leader added to the team.</p>
+      </section>
+    </main>
+  )
+}
+
+function SetPasswordScreen({
+  email,
+  recovery,
+  onDone,
+}: {
+  email: string
+  recovery: boolean
+  onDone: () => void
+}) {
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    setError('')
+    if (password.length < 8) {
+      setError('Use at least 8 characters.')
+      return
+    }
+    if (password !== confirm) {
+      setError('The two passwords do not match.')
+      return
+    }
+    setBusy(true)
+    const { error: authError } = await supabase.auth.updateUser({
+      password,
+      data: { password_set: true },
+    })
+    setBusy(false)
+    if (authError) {
+      setError(authError.message)
+      return
+    }
+    onDone()
+  }
+
+  return (
+    <main className="auth-shell">
+      <section className="auth-card">
+        <div className="brand-mark">V</div>
+        <p className="eyebrow">{recovery ? 'PASSWORD RESET' : 'ACCOUNT SETUP'}</p>
+        <h1>{recovery ? 'Choose a new password' : 'Finish creating your account'}</h1>
+        <p className="lead">Your email has been verified as <strong>{email}</strong>. Choose the password you will use to sign in from now on.</p>
+        <form onSubmit={submit} className="stack-form">
+          <label>
+            Password
+            <input type="password" minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+          </label>
+          <label>
+            Confirm password
+            <input type="password" minLength={8} required value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
+          </label>
+          <button className="primary" disabled={busy}>{busy ? 'Saving…' : 'Save password and continue'}</button>
+          {error && <p className="form-error">{error}</p>}
+        </form>
+        <p className="microcopy">Use at least 8 characters. Your password is handled by Supabase Auth and is not stored in the vacation tables.</p>
       </section>
     </main>
   )
@@ -369,7 +534,7 @@ function CalendarView({
         <div>
           <p className="eyebrow">TEAM AGENDA</p>
           <h1>Vacation calendar</h1>
-          <p>Only approved vacation is shown here.</p>
+          <p>Approved vacation and official Vaud public holidays are shown here.</p>
         </div>
         <button className="primary" onClick={() => setShowForm(true)}>+ Request vacation</button>
       </div>
@@ -388,21 +553,29 @@ function CalendarView({
           {days.map((day) => {
             const dayIso = isoDate(day)
             const dayEntries = entriesForDate(entries, dayIso)
+            const holiday = getVaudPublicHoliday(dayIso)
             const outside = day.getMonth() !== month.getMonth()
             const today = dayIso === isoDate(new Date())
+            const weekend = day.getDay() === 0 || day.getDay() === 6
             return (
-              <div className={`calendar-day ${outside ? 'outside' : ''} ${today ? 'today' : ''}`} key={dayIso}>
+              <div className={`calendar-day ${outside ? 'outside' : ''} ${today ? 'today' : ''} ${weekend ? 'weekend' : ''} ${holiday ? 'public-holiday' : ''}`} key={dayIso}>
                 <span className="day-number">{day.getDate()}</span>
                 <div className="day-events">
-                  {dayEntries.slice(0, 3).map((entry) => (
+                  {holiday && <span className="holiday-chip" title="Official Canton of Vaud public holiday">{holiday.name}</span>}
+                  {dayEntries.slice(0, holiday ? 2 : 3).map((entry) => (
                     <span className="vacation-chip" key={entry.request_id}>{entry.requester_name}</span>
                   ))}
-                  {dayEntries.length > 3 && <span className="more-chip">+{dayEntries.length - 3} more</span>}
+                  {dayEntries.length > (holiday ? 2 : 3) && <span className="more-chip">+{dayEntries.length - (holiday ? 2 : 3)} more</span>}
                 </div>
               </div>
             )
           })}
         </div>
+      </div>
+      <div className="calendar-legend">
+        <span><i className="legend-swatch vacation" /> Approved vacation</span>
+        <span><i className="legend-swatch holiday" /> Vaud public holiday</span>
+        <span className="legend-note">Weekends and public holidays do not reduce the vacation balance.</span>
       </div>
 
       {showForm && (
@@ -487,7 +660,7 @@ function VacationModal({
             <label>From<input type="date" required value={startDate} onChange={(e) => { setStartDate(e.target.value); if (e.target.value > endDate) setEndDate(e.target.value) }} /></label>
             <label>To<input type="date" required value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} /></label>
           </div>
-          <div className="duration-preview">{daysInclusive(startDate, endDate)} calendar day{daysInclusive(startDate, endDate) === 1 ? '' : 's'}</div>
+          <div className="duration-preview"><strong>{workingDaysInclusive(startDate, endDate)} vacation day{workingDaysInclusive(startDate, endDate) === 1 ? '' : 's'}</strong> charged · weekends and official Vaud public holidays excluded</div>
           <label>
             Note <span className="optional">optional</span>
             <textarea value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} placeholder="Anything the leader should know?" rows={4} />
@@ -512,11 +685,15 @@ function MyVacationView({
   setNotice: (notice: Notice) => void
   onChanged: () => Promise<void>
 }) {
+  const currentYear = new Date().getFullYear()
   const [requests, setRequests] = useState<VacationRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [balanceYear, setBalanceYear] = useState(currentYear)
+  const [balance, setBalance] = useState<VacationBalance | null>(null)
+  const [balanceLoading, setBalanceLoading] = useState(true)
 
-  async function load() {
+  async function loadRequests() {
     setLoading(true)
     try {
       setRequests(await getMyRequests(group.group_id))
@@ -527,7 +704,23 @@ function MyVacationView({
     }
   }
 
-  useEffect(() => { load() }, [group.group_id])
+  async function loadBalance() {
+    setBalanceLoading(true)
+    try {
+      setBalance(await getMyVacationBalance(group.group_id, balanceYear))
+    } catch (error) {
+      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not load your vacation balance.' })
+    } finally {
+      setBalanceLoading(false)
+    }
+  }
+
+  async function reloadAll() {
+    await Promise.all([loadRequests(), loadBalance()])
+  }
+
+  useEffect(() => { loadRequests() }, [group.group_id])
+  useEffect(() => { loadBalance() }, [group.group_id, balanceYear])
 
   return (
     <>
@@ -535,35 +728,74 @@ function MyVacationView({
         <div>
           <p className="eyebrow">PERSONAL</p>
           <h1>My vacation</h1>
-          <p>Track your approved, pending, and rejected requests.</p>
+          <p>Your balance is private. Only you and the group leader can see it.</p>
         </div>
         <button className="primary" onClick={() => setShowForm(true)}>+ {group.role === 'leader' ? 'Add vacation' : 'New request'}</button>
       </div>
-      <div className="list-card">
+
+      <section className="balance-card">
+        <div className="balance-card-heading">
+          <div>
+            <p className="eyebrow">VACATION BALANCE</p>
+            <h2>{balanceYear}</h2>
+          </div>
+          <select className="year-select" value={balanceYear} onChange={(e) => setBalanceYear(Number(e.target.value))}>
+            {[currentYear, currentYear + 1, currentYear + 2].map((year) => <option key={year} value={year}>{year}</option>)}
+          </select>
+        </div>
+        {balanceLoading || !balance ? <InlineLoading /> : (
+          <div className="balance-stats">
+            <div className="balance-primary"><strong>{balance.remaining_days}</strong><span>days left</span></div>
+            <div><strong>{balance.allowance_days}</strong><span>annual allowance</span></div>
+            <div><strong>{balance.used_days}</strong><span>approved / booked</span></div>
+            <div><strong>{balance.pending_days}</strong><span>pending</span></div>
+          </div>
+        )}
+        <p className="balance-note">Charged days exclude Saturdays, Sundays, and official Canton of Vaud public holidays.</p>
+      </section>
+
+      <div className="list-card request-list-card">
         {loading ? <InlineLoading /> : requests.length === 0 ? (
           <EmptyState title="No vacation yet" text="Your requests will appear here." />
-        ) : requests.map((request) => (
-          <div className="request-row" key={request.request_id}>
-            <div className={`status-dot ${request.status}`} />
-            <div className="request-main">
-              <strong>{formatRange(request.start_date, request.end_date)}</strong>
-              <span>{daysInclusive(request.start_date, request.end_date)} day{daysInclusive(request.start_date, request.end_date) === 1 ? '' : 's'}{request.note ? ` · ${request.note}` : ''}</span>
+        ) : requests.map((request) => {
+          const workingDays = workingDaysInclusive(request.start_date, request.end_date)
+          const canCancel = request.status === 'approved' && request.start_date >= isoDate(new Date())
+          return (
+            <div className="request-row" key={request.request_id}>
+              <div className={`status-dot ${request.status}`} />
+              <div className="request-main">
+                <strong>{formatRange(request.start_date, request.end_date)}</strong>
+                <span>{workingDays} vacation day{workingDays === 1 ? '' : 's'} charged{request.note ? ` · ${request.note}` : ''}</span>
+              </div>
+              <span className={`status-pill ${request.status}`}>{request.status}</span>
+              {request.status === 'pending' && (
+                <button className="text-button danger-text" onClick={async () => {
+                  try {
+                    await withdrawVacation(request.request_id)
+                    await reloadAll()
+                    await onChanged()
+                    setNotice({ type: 'success', text: 'Pending request withdrawn.' })
+                  } catch (error) {
+                    setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not withdraw the request.' })
+                  }
+                }}>Withdraw</button>
+              )}
+              {canCancel && (
+                <button className="text-button danger-text" onClick={async () => {
+                  if (!window.confirm(`Cancel your vacation ${formatRange(request.start_date, request.end_date)}? It will disappear from the group calendar immediately.`)) return
+                  try {
+                    await cancelVacation(request.request_id)
+                    await reloadAll()
+                    await onChanged()
+                    setNotice({ type: 'success', text: 'Vacation cancelled. No leader approval or notification was required.' })
+                  } catch (error) {
+                    setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not cancel the vacation.' })
+                  }
+                }}>Cancel vacation</button>
+              )}
             </div>
-            <span className={`status-pill ${request.status}`}>{request.status}</span>
-            {request.status === 'pending' && (
-              <button className="text-button danger-text" onClick={async () => {
-                try {
-                  await withdrawVacation(request.request_id)
-                  await load()
-                  await onChanged()
-                  setNotice({ type: 'success', text: 'Pending request withdrawn.' })
-                } catch (error) {
-                  setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not withdraw the request.' })
-                }
-              }}>Withdraw</button>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
       {showForm && (
         <VacationModal
@@ -571,7 +803,7 @@ function MyVacationView({
           onClose={() => setShowForm(false)}
           onSaved={async (status) => {
             setShowForm(false)
-            await load()
+            await reloadAll()
             await onChanged()
             setNotice({ type: 'success', text: status === 'approved' ? 'Vacation added.' : 'Request sent for approval.' })
           }}
@@ -646,7 +878,7 @@ function ApprovalsView({
                 <span className="status-pill pending">pending</span>
               </div>
               <h3>{formatRange(request.start_date, request.end_date)}</h3>
-              <p className="days-label">{daysInclusive(request.start_date, request.end_date)} calendar day{daysInclusive(request.start_date, request.end_date) === 1 ? '' : 's'}</p>
+              <p className="days-label">{workingDaysInclusive(request.start_date, request.end_date)} vacation day{workingDaysInclusive(request.start_date, request.end_date) === 1 ? '' : 's'} charged · weekends and Vaud public holidays excluded</p>
               {request.note && <blockquote>{request.note}</blockquote>}
               <div className="approval-actions">
                 <button className="reject" disabled={workingId === request.request_id} onClick={() => decide(request.request_id, 'rejected')}>Reject</button>
@@ -661,16 +893,29 @@ function ApprovalsView({
 }
 
 function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (notice: Notice) => void }) {
+  const currentYear = new Date().getFullYear()
   const [members, setMembers] = useState<GroupMember[]>([])
+  const [balances, setBalances] = useState<MemberVacationBalance[]>([])
+  const [balanceYear, setBalanceYear] = useState(currentYear)
+  const [allowanceDrafts, setAllowanceDrafts] = useState<Record<string, string>>({})
+  const [savingAllowanceId, setSavingAllowanceId] = useState('')
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
+  const [newRole, setNewRole] = useState<'member' | 'leader'>('member')
   const [busy, setBusy] = useState(false)
+  const [roleWorkingId, setRoleWorkingId] = useState('')
 
   async function load() {
     setLoading(true)
     try {
-      setMembers(await getGroupMembers(group.group_id))
+      const [nextMembers, nextBalances] = await Promise.all([
+        getGroupMembers(group.group_id),
+        getGroupVacationBalances(group.group_id, balanceYear),
+      ])
+      setMembers(nextMembers)
+      setBalances(nextBalances)
+      setAllowanceDrafts(Object.fromEntries(nextBalances.map((balance) => [balance.member_id, String(balance.allowance_days)])))
     } catch (error) {
       setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not load members.' })
     } finally {
@@ -678,17 +923,18 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
     }
   }
 
-  useEffect(() => { load() }, [group.group_id])
+  useEffect(() => { load() }, [group.group_id, balanceYear])
 
   async function add(event: React.FormEvent) {
     event.preventDefault()
     setBusy(true)
     try {
-      await addGroupMember(group.group_id, email, name)
+      await addGroupMember(group.group_id, email, name, newRole)
       setEmail('')
       setName('')
+      setNewRole('member')
       await load()
-      setNotice({ type: 'success', text: 'Member added. They can now sign in with that exact email address.' })
+      setNotice({ type: 'success', text: newRole === 'leader' ? 'Group leader added.' : 'Member added with a default annual allowance of 25 days. You can change it below.' })
     } catch (error) {
       setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not add the member.' })
     } finally {
@@ -696,49 +942,135 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
     }
   }
 
+  async function saveAllowance(memberId: string) {
+    const value = Number(allowanceDrafts[memberId])
+    if (!Number.isInteger(value) || value < 0 || value > 366) {
+      setNotice({ type: 'error', text: 'Annual allowance must be a whole number between 0 and 366.' })
+      return
+    }
+    setSavingAllowanceId(memberId)
+    try {
+      await setMemberAllowance(group.group_id, memberId, value)
+      await load()
+      setNotice({ type: 'success', text: 'Annual vacation allowance updated.' })
+    } catch (error) {
+      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not update the allowance.' })
+    } finally {
+      setSavingAllowanceId('')
+    }
+  }
+
+  const canManageLeaders = members.some((member) => member.is_owner && member.is_me)
+
+  async function changeLeaderRole(member: GroupMember, makeLeader: boolean) {
+    const action = makeLeader ? 'make this person a group leader' : 'remove this person’s leader rights'
+    if (!window.confirm(`${makeLeader ? 'Make' : 'Change'} ${member.display_name}: ${action}?`)) return
+    setRoleWorkingId(member.member_id)
+    try {
+      if (makeLeader) await promoteGroupLeader(group.group_id, member.member_id)
+      else await demoteGroupLeader(group.group_id, member.member_id)
+      await load()
+      setNotice({ type: 'success', text: makeLeader ? `${member.display_name} is now a group leader.` : `${member.display_name} is now a regular member.` })
+    } catch (error) {
+      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not change leader rights.' })
+    } finally {
+      setRoleWorkingId('')
+    }
+  }
+
+
   return (
     <>
       <div className="content-header">
         <div>
           <p className="eyebrow">LEADER</p>
           <h1>Group members</h1>
-          <p>Add the email addresses that are allowed to see this group's agenda.</p>
+          <p>Group leaders can manage vacation balances and approvals. Only the original group leader can grant or remove leader rights.</p>
         </div>
+        <label className="year-filter">Balance year
+          <select value={balanceYear} onChange={(e) => setBalanceYear(Number(e.target.value))}>
+            {[currentYear, currentYear + 1, currentYear + 2].map((year) => <option key={year} value={year}>{year}</option>)}
+          </select>
+        </label>
       </div>
       <div className="members-layout">
-        <section className="list-card">
-          {loading ? <InlineLoading /> : members.map((member) => (
-            <div className="member-row" key={member.member_id}>
-              <div className="avatar">{initials(member.display_name)}</div>
-              <div className="member-main">
-                <strong>{member.display_name}</strong>
-                <span>{member.email}</span>
+        <section className="list-card member-balance-list">
+          {loading ? <InlineLoading /> : members.map((member) => {
+            const balance = balances.find((item) => item.member_id === member.member_id)
+            return (
+              <div className="member-row member-balance-row" key={member.member_id}>
+                <div className="avatar">{initials(member.display_name)}</div>
+                <div className="member-main">
+                  <strong>{member.display_name}</strong>
+                  <span>{member.email}</span>
+                  {balance && (
+                    <div className="leader-balance-summary">
+                      <strong>{balance.remaining_days} left</strong>
+                      <span>{balance.used_days} approved · {balance.pending_days} pending · {balance.allowance_days} allowance</span>
+                    </div>
+                  )}
+                </div>
+                <div className="member-role-stack">
+                  <span className={`role-pill ${member.role}`}>{member.is_owner ? 'Original leader' : member.role === 'leader' ? 'Group leader' : 'Member'}</span>
+                  {member.is_me && <span className="you-pill">You</span>}
+                </div>
+                <span className={`joined-pill ${member.joined ? 'yes' : ''}`}>{member.joined ? 'Account created' : 'No account yet'}</span>
+                <div className="allowance-editor">
+                  <label>Annual days
+                    <input
+                      type="number"
+                      min="0"
+                      max="366"
+                      step="1"
+                      value={allowanceDrafts[member.member_id] ?? balance?.allowance_days ?? 25}
+                      onChange={(e) => setAllowanceDrafts((current) => ({ ...current, [member.member_id]: e.target.value }))}
+                    />
+                  </label>
+                  <button className="ghost compact-button" disabled={savingAllowanceId === member.member_id} onClick={() => saveAllowance(member.member_id)}>
+                    {savingAllowanceId === member.member_id ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+                {canManageLeaders && !member.is_owner && (
+                  <button
+                    className="ghost compact-button leader-toggle"
+                    disabled={roleWorkingId === member.member_id}
+                    onClick={() => changeLeaderRole(member, member.role !== 'leader')}
+                  >
+                    {roleWorkingId === member.member_id ? 'Saving…' : member.role === 'leader' ? 'Remove leader rights' : 'Make leader'}
+                  </button>
+                )}
+                {member.role !== 'leader' && (
+                  <button className="icon-button danger" title="Remove member" onClick={async () => {
+                    if (!window.confirm(`Remove ${member.display_name} from this group?`)) return
+                    try {
+                      await removeGroupMember(group.group_id, member.member_id)
+                      await load()
+                      setNotice({ type: 'success', text: 'Member removed.' })
+                    } catch (error) {
+                      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not remove the member.' })
+                    }
+                  }}>×</button>
+                )}
               </div>
-              <span className={`role-pill ${member.role}`}>{member.role}</span>
-              <span className={`joined-pill ${member.joined ? 'yes' : ''}`}>{member.joined ? 'Signed in' : 'Not yet signed in'}</span>
-              {member.role !== 'leader' && (
-                <button className="icon-button danger" title="Remove member" onClick={async () => {
-                  if (!window.confirm(`Remove ${member.display_name} from this group?`)) return
-                  try {
-                    await removeGroupMember(group.group_id, member.member_id)
-                    await load()
-                    setNotice({ type: 'success', text: 'Member removed.' })
-                  } catch (error) {
-                    setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not remove the member.' })
-                  }
-                }}>×</button>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </section>
         <aside className="add-member-card">
           <p className="eyebrow">ADD PERSON</p>
           <h3>Give someone access</h3>
-          <p>Enter the exact email address they will use to sign in.</p>
+          <p>Enter the exact email address they will use to create their account. New members start with 25 annual vacation days. The original group leader can also add another leader directly.</p>
           <form className="stack-form" onSubmit={add}>
             <label>Name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Lena Wilhelm" /></label>
             <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="lena@example.org" /></label>
-            <button className="primary" disabled={busy}>{busy ? 'Adding…' : 'Add member'}</button>
+            {canManageLeaders && (
+              <label>Role
+                <select value={newRole} onChange={(e) => setNewRole(e.target.value as 'member' | 'leader')}>
+                  <option value="member">Member</option>
+                  <option value="leader">Group leader</option>
+                </select>
+              </label>
+            )}
+            <button className="primary" disabled={busy}>{busy ? 'Adding…' : newRole === 'leader' ? 'Add group leader' : 'Add member'}</button>
           </form>
         </aside>
       </div>

@@ -95,7 +95,7 @@ Deno.serve(async (request) => {
 
   const { data: group, error: groupError } = await admin
     .from('vacation_groups')
-    .select('id, name, leader_user_id')
+    .select('id, name')
     .eq('id', vacation.group_id)
     .single()
 
@@ -104,11 +104,16 @@ Deno.serve(async (request) => {
     return json({ error: 'Group not found' }, 500)
   }
 
-  const { data: leaderData, error: leaderError } = await admin.auth.admin.getUserById(group.leader_user_id)
-  const leaderEmail = leaderData.user?.email
-  if (leaderError || !leaderEmail) {
+  const { data: leaderRows, error: leaderError } = await admin
+    .from('vacation_group_members')
+    .select('email')
+    .eq('group_id', vacation.group_id)
+    .eq('role', 'leader')
+
+  const leaderEmails = Array.from(new Set((leaderRows ?? []).map((row) => String(row.email ?? '').trim().toLowerCase()).filter(Boolean)))
+  if (leaderError || leaderEmails.length === 0) {
     await admin.from('vacation_requests').update({ notified_at: null }).eq('id', requestId).eq('notified_at', claimTime)
-    return json({ error: 'Leader email not found' }, 500)
+    return json({ error: 'No group leader email was found' }, 500)
   }
 
   const subject = `${vacation.requester_name} requested vacation`
@@ -127,7 +132,7 @@ Deno.serve(async (request) => {
     },
     body: JSON.stringify({
       from,
-      to: [leaderEmail],
+      to: leaderEmails,
       subject,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#1e2a24;line-height:1.5">
@@ -136,7 +141,7 @@ Deno.serve(async (request) => {
           <p><strong>${escapeHtml(vacation.requester_name)}</strong> requested vacation from <strong>${escapeHtml(vacation.start_date)}</strong> to <strong>${escapeHtml(vacation.end_date)}</strong>.</p>
           ${noteHtml}
           ${actionHtml}
-          <p style="margin-top:28px;color:#87908a;font-size:12px">The vacation will appear in the shared calendar only after you approve it.</p>
+          <p style="margin-top:28px;color:#87908a;font-size:12px">The vacation will appear in the shared calendar only after a group leader approves it.</p>
         </div>
       `,
     }),

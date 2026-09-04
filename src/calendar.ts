@@ -1,4 +1,5 @@
 import type { VacationEntry } from './types'
+import { getVaudPublicHoliday } from './vaudHolidays'
 
 export function isoDate(date: Date) {
   const y = date.getFullYear()
@@ -41,4 +42,18 @@ export function formatRange(start: string, end: string) {
 export function daysInclusive(start: string, end: string) {
   const ms = parseIsoDate(end).getTime() - parseIsoDate(start).getTime()
   return Math.round(ms / 86400000) + 1
+}
+
+export function workingDaysInclusive(start: string, end: string) {
+  if (!start || !end || end < start) return 0
+  let cursor = parseIsoDate(start)
+  const last = parseIsoDate(end)
+  let count = 0
+  while (cursor <= last) {
+    const day = cursor.getDay()
+    const date = isoDate(cursor)
+    if (day !== 0 && day !== 6 && !getVaudPublicHoliday(date)) count += 1
+    cursor = addDays(cursor, 1)
+  }
+  return count
 }
