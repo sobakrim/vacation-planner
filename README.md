@@ -194,3 +194,40 @@ Sign in
 ## License
 
 MIT
+
+## v0.4 — contract start dates and half-days
+
+Existing v0.3 installations should run this migration once in **Supabase → SQL Editor**:
+
+```text
+supabase/004_contract_proration_half_days.sql
+```
+
+Then redeploy the notification Edge Function because request emails now describe half-days:
+
+```bash
+supabase functions deploy notify-vacation-request
+```
+
+### Contract start date and prorating
+
+- Every group membership now has a `contract_start_date`.
+- A group leader can enter it when adding the person or edit it later in **Members**.
+- A member can also set or correct their own start date in **My vacation**.
+- Vacation cannot be requested until the contract start date is set, and vacation cannot start before the contract.
+- `annual_allowance_days` remains the person's **full-year entitlement** (for example 25 days).
+- In the contract-start year, the effective allowance is prorated using the exact number of calendar days employed in that year and rounded to the nearest 0.5 day.
+- Years before the contract start have 0 entitlement; later complete years receive the full-year entitlement.
+- Weekends and official Canton of Vaud public holidays continue to be excluded from charged vacation days.
+
+### Half-day vacation
+
+A one-day request can be:
+
+- full day,
+- morning only (0.5 day), or
+- afternoon only (0.5 day).
+
+For a multi-day request, the first day may start in the afternoon and/or the last day may end after the morning. The shared calendar marks half-days with `AM` or `PM`.
+
+The database overlap check is half-day aware, so a morning vacation and an afternoon vacation on the same date do not conflict.

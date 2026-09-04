@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import type {
+  DayPart,
   GroupMember,
   GroupSummary,
   MemberVacationBalance,
@@ -38,7 +39,7 @@ export async function getCalendar(
   fromDate: string,
   toDate: string,
 ): Promise<VacationEntry[]> {
-  const { data, error } = await supabase.rpc('get_group_calendar', {
+  const { data, error } = await supabase.rpc('get_group_calendar_v2', {
     p_group_id: groupId,
     p_from: fromDate,
     p_to: toDate,
@@ -48,7 +49,7 @@ export async function getCalendar(
 }
 
 export async function getMyRequests(groupId: string): Promise<VacationRequest[]> {
-  const { data, error } = await supabase.rpc('get_my_vacation_requests', {
+  const { data, error } = await supabase.rpc('get_my_vacation_requests_v2', {
     p_group_id: groupId,
   })
   if (error) throw new Error(error.message)
@@ -56,7 +57,7 @@ export async function getMyRequests(groupId: string): Promise<VacationRequest[]>
 }
 
 export async function getPendingRequests(groupId: string): Promise<VacationRequest[]> {
-  const { data, error } = await supabase.rpc('get_pending_vacation_requests', {
+  const { data, error } = await supabase.rpc('get_pending_vacation_requests_v2', {
     p_group_id: groupId,
   })
   if (error) throw new Error(error.message)
@@ -64,7 +65,7 @@ export async function getPendingRequests(groupId: string): Promise<VacationReque
 }
 
 export async function getGroupMembers(groupId: string): Promise<GroupMember[]> {
-  const { data, error } = await supabase.rpc('get_group_members_v2', {
+  const { data, error } = await supabase.rpc('get_group_members_v3', {
     p_group_id: groupId,
   })
   if (error) throw new Error(error.message)
@@ -72,7 +73,7 @@ export async function getGroupMembers(groupId: string): Promise<GroupMember[]> {
 }
 
 export async function getMyVacationBalance(groupId: string, year: number): Promise<VacationBalance> {
-  const { data, error } = await supabase.rpc('get_my_vacation_balance', {
+  const { data, error } = await supabase.rpc('get_my_vacation_balance_v2', {
     p_group_id: groupId,
     p_year: year,
   })
@@ -83,7 +84,7 @@ export async function getMyVacationBalance(groupId: string, year: number): Promi
 }
 
 export async function getGroupVacationBalances(groupId: string, year: number): Promise<MemberVacationBalance[]> {
-  const { data, error } = await supabase.rpc('get_group_vacation_balances', {
+  const { data, error } = await supabase.rpc('get_group_vacation_balances_v2', {
     p_group_id: groupId,
     p_year: year,
   })
@@ -100,12 +101,36 @@ export async function setMemberAllowance(groupId: string, memberId: string, days
   if (error) throw new Error(error.message)
 }
 
-export async function addGroupMember(groupId: string, email: string, name: string, role: 'member' | 'leader' = 'member') {
-  const { error } = await supabase.rpc('add_group_member_v2', {
+export async function setMemberContractStart(groupId: string, memberId: string, contractStartDate: string) {
+  const { error } = await supabase.rpc('set_member_contract_start', {
+    p_group_id: groupId,
+    p_member_id: memberId,
+    p_contract_start_date: contractStartDate,
+  })
+  if (error) throw new Error(error.message)
+}
+
+export async function setMyContractStart(groupId: string, contractStartDate: string) {
+  const { error } = await supabase.rpc('set_my_contract_start', {
+    p_group_id: groupId,
+    p_contract_start_date: contractStartDate,
+  })
+  if (error) throw new Error(error.message)
+}
+
+export async function addGroupMember(
+  groupId: string,
+  email: string,
+  name: string,
+  role: 'member' | 'leader' = 'member',
+  contractStartDate: string | null = null,
+) {
+  const { error } = await supabase.rpc('add_group_member_v3', {
     p_group_id: groupId,
     p_email: email,
     p_display_name: name,
     p_role: role,
+    p_contract_start_date: contractStartDate || null,
   })
   if (error) throw new Error(error.message)
 }
@@ -138,12 +163,16 @@ export async function requestVacation(
   groupId: string,
   startDate: string,
   endDate: string,
+  startPart: DayPart,
+  endPart: DayPart,
   note: string,
 ): Promise<{ request_id: string; status: 'pending' | 'approved' | 'rejected' }> {
-  const { data, error } = await supabase.rpc('request_vacation', {
+  const { data, error } = await supabase.rpc('request_vacation_v2', {
     p_group_id: groupId,
     p_start_date: startDate,
     p_end_date: endDate,
+    p_start_part: startPart,
+    p_end_part: endPart,
     p_note: note || null,
   })
   if (error) throw new Error(error.message)

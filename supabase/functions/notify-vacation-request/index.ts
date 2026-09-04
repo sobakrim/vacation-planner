@@ -26,6 +26,18 @@ function getDefaultKey(envName: string, legacyName: string) {
   return Deno.env.get(legacyName) ?? ''
 }
 
+
+function describeVacation(startDate: string, endDate: string, startPart: string, endPart: string) {
+  if (startDate === endDate) {
+    if (startPart === 'morning') return `${startDate} (morning, ½ day)`
+    if (startPart === 'afternoon') return `${startDate} (afternoon, ½ day)`
+    return startDate
+  }
+  const startSuffix = startPart === 'afternoon' ? ' (afternoon)' : ''
+  const endSuffix = endPart === 'morning' ? ' (morning)' : ''
+  return `${startDate}${startSuffix} to ${endDate}${endSuffix}`
+}
+
 function escapeHtml(value: string) {
   return value.replace(/[&<>'"]/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
@@ -71,7 +83,7 @@ Deno.serve(async (request) => {
 
   const { data: vacation, error: vacationError } = await admin
     .from('vacation_requests')
-    .select('id, group_id, requester_user_id, requester_name, requester_email, start_date, end_date, note, status, notified_at')
+    .select('id, group_id, requester_user_id, requester_name, requester_email, start_date, end_date, start_part, end_part, note, status, notified_at')
     .eq('id', requestId)
     .maybeSingle()
 
@@ -138,7 +150,7 @@ Deno.serve(async (request) => {
         <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#1e2a24;line-height:1.5">
           <p style="font-size:12px;letter-spacing:.12em;color:#708077;font-weight:700">${escapeHtml(group.name.toUpperCase())}</p>
           <h2 style="margin:0 0 16px">New vacation request</h2>
-          <p><strong>${escapeHtml(vacation.requester_name)}</strong> requested vacation from <strong>${escapeHtml(vacation.start_date)}</strong> to <strong>${escapeHtml(vacation.end_date)}</strong>.</p>
+          <p><strong>${escapeHtml(vacation.requester_name)}</strong> requested vacation for <strong>${escapeHtml(describeVacation(vacation.start_date, vacation.end_date, vacation.start_part, vacation.end_part))}</strong>.</p>
           ${noteHtml}
           ${actionHtml}
           <p style="margin-top:28px;color:#87908a;font-size:12px">The vacation will appear in the shared calendar only after a group leader approves it.</p>

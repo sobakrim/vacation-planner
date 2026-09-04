@@ -1,5 +1,6 @@
 export type Role = 'leader' | 'member'
 export type VacationStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+export type DayPart = 'full' | 'morning' | 'afternoon'
 
 export interface GroupSummary {
   group_id: string
@@ -13,6 +14,8 @@ export interface VacationEntry {
   requester_name: string
   start_date: string
   end_date: string
+  start_part: DayPart
+  end_part: DayPart
 }
 
 export interface VacationRequest {
@@ -21,6 +24,8 @@ export interface VacationRequest {
   requester_email: string
   start_date: string
   end_date: string
+  start_part: DayPart
+  end_part: DayPart
   note: string | null
   status: VacationStatus
   created_at: string
@@ -35,14 +40,17 @@ export interface GroupMember {
   joined: boolean
   is_owner: boolean
   is_me: boolean
+  contract_start_date: string | null
 }
 
 export interface VacationBalance {
   year: number
-  allowance_days: number
+  full_year_allowance_days: number
+  allowance_days: number | null
   used_days: number
   pending_days: number
-  remaining_days: number
+  remaining_days: number | null
+  contract_start_date: string | null
 }
 
 export interface MemberVacationBalance extends VacationBalance {

@@ -1,4 +1,4 @@
-import type { VacationEntry } from './types'
+import type { DayPart, VacationEntry } from './types'
 import { getVaudPublicHoliday } from './vaudHolidays'
 
 export function isoDate(date: Date) {
@@ -39,12 +39,29 @@ export function formatRange(start: string, end: string) {
   return `${fmt.format(parseIsoDate(start))} – ${fmt.format(parseIsoDate(end))}`
 }
 
+export function formatVacationRange(start: string, end: string, startPart: DayPart = 'full', endPart: DayPart = 'full') {
+  const base = formatRange(start, end)
+  if (start === end) {
+    if (startPart === 'morning') return `${base} · morning`
+    if (startPart === 'afternoon') return `${base} · afternoon`
+    return base
+  }
+  const first = startPart === 'afternoon' ? ' · starts afternoon' : ''
+  const last = endPart === 'morning' ? ' · ends morning' : ''
+  return `${base}${first}${last}`
+}
+
 export function daysInclusive(start: string, end: string) {
   const ms = parseIsoDate(end).getTime() - parseIsoDate(start).getTime()
   return Math.round(ms / 86400000) + 1
 }
 
-export function workingDaysInclusive(start: string, end: string) {
+export function vacationDaysCharged(
+  start: string,
+  end: string,
+  startPart: DayPart = 'full',
+  endPart: DayPart = 'full',
+) {
   if (!start || !end || end < start) return 0
   let cursor = parseIsoDate(start)
   const last = parseIsoDate(end)
@@ -52,8 +69,30 @@ export function workingDaysInclusive(start: string, end: string) {
   while (cursor <= last) {
     const day = cursor.getDay()
     const date = isoDate(cursor)
-    if (day !== 0 && day !== 6 && !getVaudPublicHoliday(date)) count += 1
+    if (day !== 0 && day !== 6 && !getVaudPublicHoliday(date)) {
+      if (start === end && (startPart === 'morning' || startPart === 'afternoon')) count += 0.5
+      else if (date === start && startPart === 'afternoon') count += 0.5
+      else if (date === end && endPart === 'morning') count += 0.5
+      else count += 1
+    }
     cursor = addDays(cursor, 1)
   }
   return count
+}
+
+export function workingDaysInclusive(start: string, end: string) {
+  return vacationDaysCharged(start, end, 'full', 'full')
+}
+
+export function entryPartForDate(entry: VacationEntry, dateIso: string): DayPart {
+  if (entry.start_date === entry.end_date) return entry.start_part
+  if (dateIso === entry.start_date && entry.start_part === 'afternoon') return 'afternoon'
+  if (dateIso === entry.end_date && entry.end_part === 'morning') return 'morning'
+  return 'full'
+}
+
+export function dayPartShort(part: DayPart) {
+  if (part === 'morning') return 'AM'
+  if (part === 'afternoon') return 'PM'
+  return ''
 }

@@ -18,19 +18,23 @@ import {
   requestVacation,
   reviewVacation,
   setMemberAllowance,
+  setMemberContractStart,
+  setMyContractStart,
   withdrawVacation,
 } from './api'
 import {
   addDays,
   endOfCalendarMonth,
+  dayPartShort,
   entriesForDate,
-  formatRange,
+  entryPartForDate,
+  formatVacationRange,
   isoDate,
   startOfCalendarMonth,
-  workingDaysInclusive,
+  vacationDaysCharged,
 } from './calendar'
 import { supabase } from './supabase'
-import type { GroupMember, GroupSummary, MemberVacationBalance, VacationBalance, VacationEntry, VacationRequest } from './types'
+import type { DayPart, GroupMember, GroupSummary, MemberVacationBalance, VacationBalance, VacationEntry, VacationRequest } from './types'
 import { getVaudPublicHoliday } from './vaudHolidays'
 
 type Tab = 'calendar' | 'mine' | 'approvals' | 'members'
@@ -562,9 +566,14 @@ function CalendarView({
                 <span className="day-number">{day.getDate()}</span>
                 <div className="day-events">
                   {holiday && <span className="holiday-chip" title="Official Canton of Vaud public holiday">{holiday.name}</span>}
-                  {dayEntries.slice(0, holiday ? 2 : 3).map((entry) => (
-                    <span className="vacation-chip" key={entry.request_id}>{entry.requester_name}</span>
-                  ))}
+                  {dayEntries.slice(0, holiday ? 2 : 3).map((entry) => {
+                    const part = entryPartForDate(entry, dayIso)
+                    return (
+                      <span className={`vacation-chip ${part !== 'full' ? 'half-day' : ''}`} key={entry.request_id} title={part === 'full' ? 'Full day' : part}>
+                        {entry.requester_name}{part !== 'full' ? ` · ${dayPartShort(part)}` : ''}
+                      </span>
+                    )
+                  })}
                   {dayEntries.length > (holiday ? 2 : 3) && <span className="more-chip">+{dayEntries.length - (holiday ? 2 : 3)} more</span>}
                 </div>
               </div>
@@ -614,9 +623,17 @@ function VacationModal({
   const today = isoDate(new Date())
   const [startDate, setStartDate] = useState(today)
   const [endDate, setEndDate] = useState(today)
+  const [singleDayPart, setSingleDayPart] = useState<DayPart>('full')
+  const [startPart, setStartPart] = useState<'full' | 'afternoon'>('full')
+  const [endPart, setEndPart] = useState<'full' | 'morning'>('full')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  const isSingleDay = startDate === endDate
+  const effectiveStartPart: DayPart = isSingleDay ? singleDayPart : startPart
+  const effectiveEndPart: DayPart = isSingleDay ? singleDayPart : endPart
+  const chargedDays = vacationDaysCharged(startDate, endDate, effectiveStartPart, effectiveEndPart)
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -625,9 +642,20 @@ function VacationModal({
       setError('End date must be on or after the start date.')
       return
     }
+    if (chargedDays <= 0) {
+      setError('This selection contains no chargeable working time.')
+      return
+    }
     setBusy(true)
     try {
-      const result = await requestVacation(group.group_id, startDate, endDate, note)
+      const result = await requestVacation(
+        group.group_id,
+        startDate,
+        endDate,
+        effectiveStartPart,
+        effectiveEndPart,
+        note,
+      )
       if (result.status === 'pending') {
         const { error: mailError } = await supabase.functions.invoke('notify-vacation-request', {
           body: { requestId: result.request_id },
@@ -653,17 +681,41 @@ function VacationModal({
         <p className="modal-copy">
           {group.role === 'leader'
             ? 'As group leader, your vacation is added directly to the shared calendar.'
-            : 'The group leader will receive an email and can approve or reject this request.'}
+            : 'A group leader will receive an email and can approve or reject this request.'}
         </p>
         <form className="stack-form" onSubmit={submit}>
           <div className="date-row">
             <label>From<input type="date" required value={startDate} onChange={(e) => { setStartDate(e.target.value); if (e.target.value > endDate) setEndDate(e.target.value) }} /></label>
             <label>To<input type="date" required value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} /></label>
           </div>
-          <div className="duration-preview"><strong>{workingDaysInclusive(startDate, endDate)} vacation day{workingDaysInclusive(startDate, endDate) === 1 ? '' : 's'}</strong> charged · weekends and official Vaud public holidays excluded</div>
+          {isSingleDay ? (
+            <label>Day length
+              <select value={singleDayPart} onChange={(e) => setSingleDayPart(e.target.value as DayPart)}>
+                <option value="full">Full day</option>
+                <option value="morning">Morning only (½ day)</option>
+                <option value="afternoon">Afternoon only (½ day)</option>
+              </select>
+            </label>
+          ) : (
+            <div className="date-row">
+              <label>First day
+                <select value={startPart} onChange={(e) => setStartPart(e.target.value as 'full' | 'afternoon')}>
+                  <option value="full">Full day</option>
+                  <option value="afternoon">Start in afternoon (½ first day)</option>
+                </select>
+              </label>
+              <label>Last day
+                <select value={endPart} onChange={(e) => setEndPart(e.target.value as 'full' | 'morning')}>
+                  <option value="full">Full day</option>
+                  <option value="morning">End after morning (½ last day)</option>
+                </select>
+              </label>
+            </div>
+          )}
+          <div className="duration-preview"><strong>{chargedDays} vacation day{chargedDays === 1 ? '' : 's'}</strong> charged · weekends and official Vaud public holidays excluded</div>
           <label>
             Note <span className="optional">optional</span>
-            <textarea value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} placeholder="Anything the leader should know?" rows={4} />
+            <textarea value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} placeholder="Anything the leaders should know?" rows={4} />
           </label>
           {error && <p className="form-error">{error}</p>}
           <div className="modal-actions">
@@ -692,6 +744,8 @@ function MyVacationView({
   const [balanceYear, setBalanceYear] = useState(currentYear)
   const [balance, setBalance] = useState<VacationBalance | null>(null)
   const [balanceLoading, setBalanceLoading] = useState(true)
+  const [contractDraft, setContractDraft] = useState('')
+  const [savingContract, setSavingContract] = useState(false)
 
   async function loadRequests() {
     setLoading(true)
@@ -707,11 +761,31 @@ function MyVacationView({
   async function loadBalance() {
     setBalanceLoading(true)
     try {
-      setBalance(await getMyVacationBalance(group.group_id, balanceYear))
+      const next = await getMyVacationBalance(group.group_id, balanceYear)
+      setBalance(next)
+      setContractDraft(next.contract_start_date ?? '')
     } catch (error) {
       setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not load your vacation balance.' })
     } finally {
       setBalanceLoading(false)
+    }
+  }
+
+  async function saveContractStart() {
+    if (!contractDraft) {
+      setNotice({ type: 'error', text: 'Choose your contract start date.' })
+      return
+    }
+    setSavingContract(true)
+    try {
+      await setMyContractStart(group.group_id, contractDraft)
+      await loadBalance()
+      await onChanged()
+      setNotice({ type: 'success', text: 'Contract start date saved. Your annual allowance has been recalculated.' })
+    } catch (error) {
+      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not save the contract start date.' })
+    } finally {
+      setSavingContract(false)
     }
   }
 
@@ -722,16 +796,30 @@ function MyVacationView({
   useEffect(() => { loadRequests() }, [group.group_id])
   useEffect(() => { loadBalance() }, [group.group_id, balanceYear])
 
+  const canRequest = Boolean(balance?.contract_start_date)
+
   return (
     <>
       <div className="content-header">
         <div>
           <p className="eyebrow">PERSONAL</p>
           <h1>My vacation</h1>
-          <p>Your balance is private. Only you and the group leader can see it.</p>
+          <p>Your balance and contract date are private. Only you and group leaders can see them.</p>
         </div>
-        <button className="primary" onClick={() => setShowForm(true)}>+ {group.role === 'leader' ? 'Add vacation' : 'New request'}</button>
+        <button className="primary" disabled={!canRequest} title={!canRequest ? 'Set your contract start date first' : undefined} onClick={() => setShowForm(true)}>+ {group.role === 'leader' ? 'Add vacation' : 'New request'}</button>
       </div>
+
+      <section className="contract-card">
+        <div>
+          <p className="eyebrow">CONTRACT</p>
+          <h3>Contract start date</h3>
+          <p>This date prorates your vacation entitlement for the year you joined. You can set or correct it yourself; a group leader can also update it.</p>
+        </div>
+        <div className="contract-editor">
+          <input type="date" value={contractDraft} onChange={(e) => setContractDraft(e.target.value)} />
+          <button className="ghost" disabled={savingContract || !contractDraft} onClick={saveContractStart}>{savingContract ? 'Saving…' : 'Save date'}</button>
+        </div>
+      </section>
 
       <section className="balance-card">
         <div className="balance-card-heading">
@@ -743,29 +831,32 @@ function MyVacationView({
             {[currentYear, currentYear + 1, currentYear + 2].map((year) => <option key={year} value={year}>{year}</option>)}
           </select>
         </div>
-        {balanceLoading || !balance ? <InlineLoading /> : (
-          <div className="balance-stats">
+        {balanceLoading || !balance ? <InlineLoading /> : balance.contract_start_date == null ? (
+          <div className="balance-missing">Set your contract start date above to calculate your prorated allowance.</div>
+        ) : (
+          <div className="balance-stats balance-stats-five">
             <div className="balance-primary"><strong>{balance.remaining_days}</strong><span>days left</span></div>
-            <div><strong>{balance.allowance_days}</strong><span>annual allowance</span></div>
+            <div><strong>{balance.allowance_days}</strong><span>prorated allowance</span></div>
+            <div><strong>{balance.full_year_allowance_days}</strong><span>full-year entitlement</span></div>
             <div><strong>{balance.used_days}</strong><span>approved / booked</span></div>
             <div><strong>{balance.pending_days}</strong><span>pending</span></div>
           </div>
         )}
-        <p className="balance-note">Charged days exclude Saturdays, Sundays, and official Canton of Vaud public holidays.</p>
+        <p className="balance-note">The joining year is prorated by the exact contract start date and rounded to the nearest half day. Charged days exclude Saturdays, Sundays, and official Canton of Vaud public holidays.</p>
       </section>
 
       <div className="list-card request-list-card">
         {loading ? <InlineLoading /> : requests.length === 0 ? (
           <EmptyState title="No vacation yet" text="Your requests will appear here." />
         ) : requests.map((request) => {
-          const workingDays = workingDaysInclusive(request.start_date, request.end_date)
+          const chargedDays = vacationDaysCharged(request.start_date, request.end_date, request.start_part, request.end_part)
           const canCancel = request.status === 'approved' && request.start_date >= isoDate(new Date())
           return (
             <div className="request-row" key={request.request_id}>
               <div className={`status-dot ${request.status}`} />
               <div className="request-main">
-                <strong>{formatRange(request.start_date, request.end_date)}</strong>
-                <span>{workingDays} vacation day{workingDays === 1 ? '' : 's'} charged{request.note ? ` · ${request.note}` : ''}</span>
+                <strong>{formatVacationRange(request.start_date, request.end_date, request.start_part, request.end_part)}</strong>
+                <span>{chargedDays} vacation day{chargedDays === 1 ? '' : 's'} charged{request.note ? ` · ${request.note}` : ''}</span>
               </div>
               <span className={`status-pill ${request.status}`}>{request.status}</span>
               {request.status === 'pending' && (
@@ -782,7 +873,7 @@ function MyVacationView({
               )}
               {canCancel && (
                 <button className="text-button danger-text" onClick={async () => {
-                  if (!window.confirm(`Cancel your vacation ${formatRange(request.start_date, request.end_date)}? It will disappear from the group calendar immediately.`)) return
+                  if (!window.confirm(`Cancel your vacation ${formatVacationRange(request.start_date, request.end_date, request.start_part, request.end_part)}? It will disappear from the group calendar immediately.`)) return
                   try {
                     await cancelVacation(request.request_id)
                     await reloadAll()
@@ -877,8 +968,8 @@ function ApprovalsView({
                 </div>
                 <span className="status-pill pending">pending</span>
               </div>
-              <h3>{formatRange(request.start_date, request.end_date)}</h3>
-              <p className="days-label">{workingDaysInclusive(request.start_date, request.end_date)} vacation day{workingDaysInclusive(request.start_date, request.end_date) === 1 ? '' : 's'} charged · weekends and Vaud public holidays excluded</p>
+              <h3>{formatVacationRange(request.start_date, request.end_date, request.start_part, request.end_part)}</h3>
+              <p className="days-label">{vacationDaysCharged(request.start_date, request.end_date, request.start_part, request.end_part)} vacation day{vacationDaysCharged(request.start_date, request.end_date, request.start_part, request.end_part) === 1 ? '' : 's'} charged · weekends and Vaud public holidays excluded</p>
               {request.note && <blockquote>{request.note}</blockquote>}
               <div className="approval-actions">
                 <button className="reject" disabled={workingId === request.request_id} onClick={() => decide(request.request_id, 'rejected')}>Reject</button>
@@ -898,10 +989,13 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
   const [balances, setBalances] = useState<MemberVacationBalance[]>([])
   const [balanceYear, setBalanceYear] = useState(currentYear)
   const [allowanceDrafts, setAllowanceDrafts] = useState<Record<string, string>>({})
+  const [contractDrafts, setContractDrafts] = useState<Record<string, string>>({})
   const [savingAllowanceId, setSavingAllowanceId] = useState('')
+  const [savingContractId, setSavingContractId] = useState('')
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
+  const [contractStart, setContractStart] = useState('')
   const [newRole, setNewRole] = useState<'member' | 'leader'>('member')
   const [busy, setBusy] = useState(false)
   const [roleWorkingId, setRoleWorkingId] = useState('')
@@ -915,7 +1009,8 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
       ])
       setMembers(nextMembers)
       setBalances(nextBalances)
-      setAllowanceDrafts(Object.fromEntries(nextBalances.map((balance) => [balance.member_id, String(balance.allowance_days)])))
+      setAllowanceDrafts(Object.fromEntries(nextBalances.map((balance) => [balance.member_id, String(balance.full_year_allowance_days)])))
+      setContractDrafts(Object.fromEntries(nextMembers.map((member) => [member.member_id, member.contract_start_date ?? ''])))
     } catch (error) {
       setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not load members.' })
     } finally {
@@ -929,12 +1024,20 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
     event.preventDefault()
     setBusy(true)
     try {
-      await addGroupMember(group.group_id, email, name, newRole)
+      await addGroupMember(group.group_id, email, name, newRole, contractStart || null)
       setEmail('')
       setName('')
+      setContractStart('')
       setNewRole('member')
       await load()
-      setNotice({ type: 'success', text: newRole === 'leader' ? 'Group leader added.' : 'Member added with a default annual allowance of 25 days. You can change it below.' })
+      setNotice({
+        type: 'success',
+        text: newRole === 'leader'
+          ? 'Group leader added.'
+          : contractStart
+            ? 'Member added. Their allowance will be prorated from the contract start date.'
+            : 'Member added. They can set their contract start date when they sign in.',
+      })
     } catch (error) {
       setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not add the member.' })
     } finally {
@@ -952,11 +1055,29 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
     try {
       await setMemberAllowance(group.group_id, memberId, value)
       await load()
-      setNotice({ type: 'success', text: 'Annual vacation allowance updated.' })
+      setNotice({ type: 'success', text: 'Full-year vacation entitlement updated. The prorated balance was recalculated.' })
     } catch (error) {
       setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not update the allowance.' })
     } finally {
       setSavingAllowanceId('')
+    }
+  }
+
+  async function saveContract(memberId: string) {
+    const value = contractDrafts[memberId]
+    if (!value) {
+      setNotice({ type: 'error', text: 'Choose a contract start date.' })
+      return
+    }
+    setSavingContractId(memberId)
+    try {
+      await setMemberContractStart(group.group_id, memberId, value)
+      await load()
+      setNotice({ type: 'success', text: 'Contract start date updated and the vacation allowance recalculated.' })
+    } catch (error) {
+      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not update the contract start date.' })
+    } finally {
+      setSavingContractId('')
     }
   }
 
@@ -978,14 +1099,13 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
     }
   }
 
-
   return (
     <>
       <div className="content-header">
         <div>
           <p className="eyebrow">LEADER</p>
           <h1>Group members</h1>
-          <p>Group leaders can manage vacation balances and approvals. Only the original group leader can grant or remove leader rights.</p>
+          <p>Group leaders can manage contract dates, vacation balances and approvals. Only the original group leader can grant or remove leader rights.</p>
         </div>
         <label className="year-filter">Balance year
           <select value={balanceYear} onChange={(e) => setBalanceYear(Number(e.target.value))}>
@@ -1003,10 +1123,15 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
                 <div className="member-main">
                   <strong>{member.display_name}</strong>
                   <span>{member.email}</span>
-                  {balance && (
+                  {balance && balance.contract_start_date ? (
                     <div className="leader-balance-summary">
                       <strong>{balance.remaining_days} left</strong>
-                      <span>{balance.used_days} approved · {balance.pending_days} pending · {balance.allowance_days} allowance</span>
+                      <span>{balance.used_days} approved · {balance.pending_days} pending · {balance.allowance_days} prorated / {balance.full_year_allowance_days} full-year</span>
+                    </div>
+                  ) : (
+                    <div className="leader-balance-summary missing-contract">
+                      <strong>Contract date needed</strong>
+                      <span>No prorated allowance is calculated until a start date is set.</span>
                     </div>
                   )}
                 </div>
@@ -1015,20 +1140,34 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
                   {member.is_me && <span className="you-pill">You</span>}
                 </div>
                 <span className={`joined-pill ${member.joined ? 'yes' : ''}`}>{member.joined ? 'Account created' : 'No account yet'}</span>
-                <div className="allowance-editor">
-                  <label>Annual days
-                    <input
-                      type="number"
-                      min="0"
-                      max="366"
-                      step="1"
-                      value={allowanceDrafts[member.member_id] ?? balance?.allowance_days ?? 25}
-                      onChange={(e) => setAllowanceDrafts((current) => ({ ...current, [member.member_id]: e.target.value }))}
-                    />
-                  </label>
-                  <button className="ghost compact-button" disabled={savingAllowanceId === member.member_id} onClick={() => saveAllowance(member.member_id)}>
-                    {savingAllowanceId === member.member_id ? 'Saving…' : 'Save'}
-                  </button>
+                <div className="member-settings">
+                  <div className="allowance-editor">
+                    <label>Full-year days
+                      <input
+                        type="number"
+                        min="0"
+                        max="366"
+                        step="1"
+                        value={allowanceDrafts[member.member_id] ?? balance?.full_year_allowance_days ?? 25}
+                        onChange={(e) => setAllowanceDrafts((current) => ({ ...current, [member.member_id]: e.target.value }))}
+                      />
+                    </label>
+                    <button className="ghost compact-button" disabled={savingAllowanceId === member.member_id} onClick={() => saveAllowance(member.member_id)}>
+                      {savingAllowanceId === member.member_id ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                  <div className="contract-member-editor">
+                    <label>Contract start
+                      <input
+                        type="date"
+                        value={contractDrafts[member.member_id] ?? ''}
+                        onChange={(e) => setContractDrafts((current) => ({ ...current, [member.member_id]: e.target.value }))}
+                      />
+                    </label>
+                    <button className="ghost compact-button" disabled={savingContractId === member.member_id || !contractDrafts[member.member_id]} onClick={() => saveContract(member.member_id)}>
+                      {savingContractId === member.member_id ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
                 </div>
                 {canManageLeaders && !member.is_owner && (
                   <button
@@ -1058,10 +1197,13 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
         <aside className="add-member-card">
           <p className="eyebrow">ADD PERSON</p>
           <h3>Give someone access</h3>
-          <p>Enter the exact email address they will use to create their account. New members start with 25 annual vacation days. The original group leader can also add another leader directly.</p>
+          <p>Enter the exact email address they will use to create their account. You can enter their contract start date now, or leave it blank and let them set it after signing in.</p>
           <form className="stack-form" onSubmit={add}>
             <label>Name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Lena Wilhelm" /></label>
             <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="lena@example.org" /></label>
+            <label>Contract start date <span className="optional">optional</span>
+              <input type="date" value={contractStart} onChange={(e) => setContractStart(e.target.value)} />
+            </label>
             {canManageLeaders && (
               <label>Role
                 <select value={newRole} onChange={(e) => setNewRole(e.target.value as 'member' | 'leader')}>

@@ -49,3 +49,9 @@ The database is authoritative for balance calculations. It counts weekdays and e
 ## Deployment note
 
 This is still an MVP rather than a formally audited HR system. Before institutional/high-volume deployment, add rate limiting, audit logging, backup/restore procedures, stronger email-delivery monitoring, and an independent security review.
+
+## v0.4 contract and half-day notes
+
+Contract start dates are visible only to the member concerned and group leaders through authenticated RPCs. Members may edit their own contract start date because this is an explicit product requirement; group leaders can also correct it. For a formal HR deployment, consider adding an audit trail or leader approval for contract-date changes.
+
+Half-day validation, overlap detection, contract-date requirements, and charged-day calculations are enforced server-side in the v0.4 RPCs; the legacy vacation-request RPC is revoked from authenticated browser users so those checks cannot be bypassed by calling the old endpoint directly.
