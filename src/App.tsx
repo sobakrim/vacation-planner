@@ -1170,26 +1170,30 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
                     </button>
                   </div>
                 </div>
-                {canManageLeaders && !member.is_owner && (
-                  <button
-                    className="ghost compact-button leader-toggle"
-                    disabled={roleWorkingId === member.member_id}
-                    onClick={() => changeLeaderRole(member, member.role !== 'leader')}
-                  >
-                    {roleWorkingId === member.member_id ? 'Saving…' : member.role === 'leader' ? 'Remove leader rights' : 'Make leader'}
-                  </button>
-                )}
-                {member.role !== 'leader' && (
-                  <button className="icon-button danger" title="Remove member" onClick={async () => {
-                    if (!window.confirm(`Remove ${member.display_name} from this group?`)) return
-                    try {
-                      await removeGroupMember(group.group_id, member.member_id)
-                      await load()
-                      setNotice({ type: 'success', text: 'Member removed.' })
-                    } catch (error) {
-                      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not remove the member.' })
-                    }
-                  }}>×</button>
+                {((canManageLeaders && !member.is_owner) || member.role !== 'leader') && (
+                  <div className="member-row-actions">
+                    {canManageLeaders && !member.is_owner && (
+                      <button
+                        className="ghost compact-button leader-toggle"
+                        disabled={roleWorkingId === member.member_id}
+                        onClick={() => changeLeaderRole(member, member.role !== 'leader')}
+                      >
+                        {roleWorkingId === member.member_id ? 'Saving…' : member.role === 'leader' ? 'Remove leader rights' : 'Make leader'}
+                      </button>
+                    )}
+                    {member.role !== 'leader' && (
+                      <button className="ghost compact-button remove-member-button" onClick={async () => {
+                        if (!window.confirm(`Remove ${member.display_name} from this group?`)) return
+                        try {
+                          await removeGroupMember(group.group_id, member.member_id)
+                          await load()
+                          setNotice({ type: 'success', text: 'Member removed.' })
+                        } catch (error) {
+                          setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not remove the member.' })
+                        }
+                      }}>Remove member</button>
+                    )}
+                  </div>
                 )}
               </div>
             )
