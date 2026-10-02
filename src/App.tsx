@@ -967,7 +967,7 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
         <div>
           <p className="eyebrow">LEADER</p>
           <h1>Group members</h1>
-          <p>Group administrators can add people and manage contract dates and vacation balances. There is no vacation approval workflow.</p>
+          <p>Group administrators can add people and manage contract dates and vacation balances.</p>
         </div>
         <label className="year-filter">Balance year
           <select value={balanceYear} onChange={(e) => setBalanceYear(Number(e.target.value))}>
