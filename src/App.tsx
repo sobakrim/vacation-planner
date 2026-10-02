@@ -435,7 +435,7 @@ function GroupDashboard({
         </nav>
         <div className="sidebar-note">
           <strong>{group.my_name}</strong>
-          <span>Vacation entries are added directly to the shared calendar. There is no approval workflow.</span>
+          <span>Vacation entries are added directly to the shared calendar.</span>
         </div>
       </aside>
 
