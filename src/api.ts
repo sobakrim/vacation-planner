@@ -56,13 +56,6 @@ export async function getMyRequests(groupId: string): Promise<VacationRequest[]>
   return (data ?? []) as VacationRequest[]
 }
 
-export async function getPendingRequests(groupId: string): Promise<VacationRequest[]> {
-  const { data, error } = await supabase.rpc('get_pending_vacation_requests_v2', {
-    p_group_id: groupId,
-  })
-  if (error) throw new Error(error.message)
-  return (data ?? []) as VacationRequest[]
-}
 
 export async function getGroupMembers(groupId: string): Promise<GroupMember[]> {
   const { data, error } = await supabase.rpc('get_group_members_v3', {
@@ -124,15 +117,15 @@ export async function addGroupMember(
   name: string,
   role: 'member' | 'leader' = 'member',
   contractStartDate: string | null = null,
-) {
-  const { error } = await supabase.rpc('add_group_member_v3', {
+): Promise<string> {
+  const { data, error } = await supabase.rpc('add_group_member_v4', {
     p_group_id: groupId,
     p_email: email,
     p_display_name: name,
     p_role: role,
     p_contract_start_date: contractStartDate || null,
   })
-  if (error) throw new Error(error.message)
+  return unwrap(data as string | null, error)
 }
 
 export async function promoteGroupLeader(groupId: string, memberId: string) {
@@ -166,8 +159,8 @@ export async function requestVacation(
   startPart: DayPart,
   endPart: DayPart,
   note: string,
-): Promise<{ request_id: string; status: 'pending' | 'approved' | 'rejected' }> {
-  const { data, error } = await supabase.rpc('request_vacation_v2', {
+): Promise<{ request_id: string; status: 'approved' }> {
+  const { data, error } = await supabase.rpc('request_vacation_v3', {
     p_group_id: groupId,
     p_start_date: startDate,
     p_end_date: endDate,
@@ -178,26 +171,13 @@ export async function requestVacation(
   if (error) throw new Error(error.message)
   const row = Array.isArray(data) ? data[0] : data
   if (!row) throw new Error('The server returned no vacation request.')
-  return row as { request_id: string; status: 'pending' | 'approved' | 'rejected' }
+  return row as { request_id: string; status: 'approved' }
 }
 
-export async function reviewVacation(requestId: string, decision: 'approved' | 'rejected') {
-  const { error } = await supabase.rpc('review_vacation', {
-    p_request_id: requestId,
-    p_decision: decision,
-  })
-  if (error) throw new Error(error.message)
-}
 
-export async function withdrawVacation(requestId: string) {
-  const { error } = await supabase.rpc('withdraw_vacation', {
-    p_request_id: requestId,
-  })
-  if (error) throw new Error(error.message)
-}
 
 export async function cancelVacation(requestId: string) {
-  const { error } = await supabase.rpc('cancel_vacation', {
+  const { error } = await supabase.rpc('cancel_vacation_v2', {
     p_request_id: requestId,
   })
   if (error) throw new Error(error.message)

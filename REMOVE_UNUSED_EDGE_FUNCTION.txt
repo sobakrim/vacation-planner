@@ -1,0 +1,7 @@
+The app no longer sends member invitation emails.
+If this folder still exists in your repository, you may delete it:
+
+  supabase/functions/invite-group-member/
+
+If the function is already deployed in Supabase, it is harmless but unused. You may delete it from Supabase Edge Functions as cleanup.
+No new SQL migration is required for v0.6.1 if migration 006 has already been run.

@@ -1,2 +1,1 @@
-[functions.notify-vacation-request]
-verify_jwt = true
+# v0.6.1: no Edge Functions are required by the application.

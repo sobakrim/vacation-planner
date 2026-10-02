@@ -12,15 +12,12 @@ import {
   getMyGroups,
   getMyRequests,
   getMyVacationBalance,
-  getPendingRequests,
   promoteGroupLeader,
   removeGroupMember,
   requestVacation,
-  reviewVacation,
   setMemberAllowance,
   setMemberContractStart,
   setMyContractStart,
-  withdrawVacation,
 } from './api'
 import {
   addDays,
@@ -37,7 +34,7 @@ import { supabase } from './supabase'
 import type { DayPart, GroupMember, GroupSummary, MemberVacationBalance, VacationBalance, VacationEntry, VacationRequest } from './types'
 import { getVaudPublicHoliday } from './vaudHolidays'
 
-type Tab = 'calendar' | 'mine' | 'approvals' | 'members'
+type Tab = 'calendar' | 'mine' | 'members'
 type Notice = { type: 'success' | 'warning' | 'error'; text: string } | null
 
 function App() {
@@ -391,7 +388,7 @@ function CreateGroupScreen({
         <p className="eyebrow">FIRST SETUP</p>
         <h1>Create your vacation group</h1>
         <p className="lead compact">
-          You will be the group leader. Members you add will see this group automatically when they sign in with the same email address.
+          You will be the group administrator. Add people using the exact email address they will use for their account. When they create or sign in to an account with that address, this group appears automatically.
         </p>
         <form onSubmit={submit} className="stack-form two-column-form">
           <label>
@@ -420,21 +417,6 @@ function GroupDashboard({
   setNotice: (notice: Notice) => void
 }) {
   const [tab, setTab] = useState<Tab>('calendar')
-  const [pendingCount, setPendingCount] = useState(0)
-
-  async function updatePendingCount() {
-    if (group.role !== 'leader') return
-    try {
-      const pending = await getPendingRequests(group.group_id)
-      setPendingCount(pending.length)
-    } catch {
-      // The active tab will surface a detailed error if needed.
-    }
-  }
-
-  useEffect(() => {
-    updatePendingCount()
-  }, [group.group_id])
 
   return (
     <main className="dashboard">
@@ -442,32 +424,24 @@ function GroupDashboard({
         <div className="group-heading">
           <p className="eyebrow">YOUR GROUP</p>
           <h2>{group.group_name}</h2>
-          <span className={`role-pill ${group.role}`}>{group.role === 'leader' ? 'Group leader' : 'Member'}</span>
+          <span className={`role-pill ${group.role}`}>{group.role === 'leader' ? 'Group administrator' : 'Member'}</span>
         </div>
         <nav>
           <NavButton active={tab === 'calendar'} onClick={() => setTab('calendar')} icon="▦">Calendar</NavButton>
           <NavButton active={tab === 'mine'} onClick={() => setTab('mine')} icon="○">My vacation</NavButton>
-          {group.role === 'leader' && (
-            <NavButton active={tab === 'approvals'} onClick={() => setTab('approvals')} icon="✓" badge={pendingCount}>
-              Approvals
-            </NavButton>
-          )}
           {group.role === 'leader' && (
             <NavButton active={tab === 'members'} onClick={() => setTab('members')} icon="＋">Members</NavButton>
           )}
         </nav>
         <div className="sidebar-note">
           <strong>{group.my_name}</strong>
-          <span>{group.role === 'leader' ? 'Your own vacation is approved immediately.' : 'Your requests need leader approval.'}</span>
+          <span>Vacation entries are added directly to the shared calendar. There is no approval workflow.</span>
         </div>
       </aside>
 
       <section className="content">
-        {tab === 'calendar' && <CalendarView group={group} setNotice={setNotice} onRequestSaved={updatePendingCount} />}
-        {tab === 'mine' && <MyVacationView group={group} setNotice={setNotice} onChanged={updatePendingCount} />}
-        {tab === 'approvals' && group.role === 'leader' && (
-          <ApprovalsView group={group} setNotice={setNotice} onChanged={updatePendingCount} />
-        )}
+        {tab === 'calendar' && <CalendarView group={group} setNotice={setNotice} />}
+        {tab === 'mine' && <MyVacationView group={group} setNotice={setNotice} />}
         {tab === 'members' && group.role === 'leader' && <MembersView group={group} setNotice={setNotice} />}
       </section>
     </main>
@@ -499,11 +473,9 @@ function NavButton({
 function CalendarView({
   group,
   setNotice,
-  onRequestSaved,
 }: {
   group: GroupSummary
   setNotice: (notice: Notice) => void
-  onRequestSaved: () => Promise<void>
 }) {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1))
   const [entries, setEntries] = useState<VacationEntry[]>([])
@@ -538,9 +510,9 @@ function CalendarView({
         <div>
           <p className="eyebrow">TEAM AGENDA</p>
           <h1>Vacation calendar</h1>
-          <p>Approved vacation and official Vaud public holidays are shown here.</p>
+          <p>Team vacation and official Vaud public holidays are shown here.</p>
         </div>
-        <button className="primary" onClick={() => setShowForm(true)}>+ Request vacation</button>
+        <button className="primary" onClick={() => setShowForm(true)}>+ Add vacation</button>
       </div>
 
       <div className="calendar-card">
@@ -582,7 +554,7 @@ function CalendarView({
         </div>
       </div>
       <div className="calendar-legend">
-        <span><i className="legend-swatch vacation" /> Approved vacation</span>
+        <span><i className="legend-swatch vacation" /> Vacation</span>
         <span><i className="legend-swatch holiday" /> Vaud public holiday</span>
         <span className="legend-note">Weekends and public holidays do not reduce the vacation balance.</span>
       </div>
@@ -591,18 +563,11 @@ function CalendarView({
         <VacationModal
           group={group}
           onClose={() => setShowForm(false)}
-          onSaved={async (status) => {
+          onSaved={async () => {
             setShowForm(false)
             await load()
-            await onRequestSaved()
-            setNotice({
-              type: status === 'approved' ? 'success' : 'success',
-              text: status === 'approved'
-                ? 'Vacation added to the group calendar.'
-                : 'Request sent to the group leader for approval.',
-            })
+            setNotice({ type: 'success', text: 'Vacation added to the group calendar.' })
           }}
-          onEmailWarning={(text) => setNotice({ type: 'warning', text })}
         />
       )}
     </>
@@ -613,12 +578,10 @@ function VacationModal({
   group,
   onClose,
   onSaved,
-  onEmailWarning,
 }: {
   group: GroupSummary
   onClose: () => void
-  onSaved: (status: 'pending' | 'approved' | 'rejected') => Promise<void>
-  onEmailWarning: (text: string) => void
+  onSaved: () => Promise<void>
 }) {
   const today = isoDate(new Date())
   const [startDate, setStartDate] = useState(today)
@@ -648,7 +611,7 @@ function VacationModal({
     }
     setBusy(true)
     try {
-      const result = await requestVacation(
+      await requestVacation(
         group.group_id,
         startDate,
         endDate,
@@ -656,17 +619,9 @@ function VacationModal({
         effectiveEndPart,
         note,
       )
-      if (result.status === 'pending') {
-        const { error: mailError } = await supabase.functions.invoke('notify-vacation-request', {
-          body: { requestId: result.request_id },
-        })
-        if (mailError) {
-          onEmailWarning('The request was saved, but the leader email could not be sent. The request is still visible in Approvals.')
-        }
-      }
-      await onSaved(result.status)
+      await onSaved()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the request.')
+      setError(err instanceof Error ? err.message : 'Could not save the vacation.')
     } finally {
       setBusy(false)
     }
@@ -674,14 +629,12 @@ function VacationModal({
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label="Request vacation">
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Add vacation">
         <button className="modal-close" onClick={onClose} aria-label="Close">×</button>
         <p className="eyebrow">TIME OFF</p>
-        <h2>{group.role === 'leader' ? 'Add your vacation' : 'Request vacation'}</h2>
+        <h2>Add vacation</h2>
         <p className="modal-copy">
-          {group.role === 'leader'
-            ? 'As group leader, your vacation is added directly to the shared calendar.'
-            : 'A group leader will receive an email and can approve or reject this request.'}
+          Your vacation is added directly to the shared calendar. You can also enter vacation for past dates, as long as it is after your contract start date.
         </p>
         <form className="stack-form" onSubmit={submit}>
           <div className="date-row">
@@ -715,12 +668,12 @@ function VacationModal({
           <div className="duration-preview"><strong>{chargedDays} vacation day{chargedDays === 1 ? '' : 's'}</strong> charged · weekends and official Vaud public holidays excluded</div>
           <label>
             Note <span className="optional">optional</span>
-            <textarea value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} placeholder="Anything the leaders should know?" rows={4} />
+            <textarea value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} placeholder="Optional note" rows={4} />
           </label>
           {error && <p className="form-error">{error}</p>}
           <div className="modal-actions">
             <button type="button" className="ghost" onClick={onClose}>Cancel</button>
-            <button className="primary" disabled={busy}>{busy ? 'Saving…' : group.role === 'leader' ? 'Add vacation' : 'Send request'}</button>
+            <button className="primary" disabled={busy}>{busy ? 'Saving…' : 'Add vacation'}</button>
           </div>
         </form>
       </div>
@@ -731,11 +684,9 @@ function VacationModal({
 function MyVacationView({
   group,
   setNotice,
-  onChanged,
 }: {
   group: GroupSummary
   setNotice: (notice: Notice) => void
-  onChanged: () => Promise<void>
 }) {
   const currentYear = new Date().getFullYear()
   const [requests, setRequests] = useState<VacationRequest[]>([])
@@ -780,7 +731,6 @@ function MyVacationView({
     try {
       await setMyContractStart(group.group_id, contractDraft)
       await loadBalance()
-      await onChanged()
       setNotice({ type: 'success', text: 'Contract start date saved. Your annual allowance has been recalculated.' })
     } catch (error) {
       setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not save the contract start date.' })
@@ -806,7 +756,7 @@ function MyVacationView({
           <h1>My vacation</h1>
           <p>Your balance and contract date are private. Only you and group leaders can see them.</p>
         </div>
-        <button className="primary" disabled={!canRequest} title={!canRequest ? 'Set your contract start date first' : undefined} onClick={() => setShowForm(true)}>+ {group.role === 'leader' ? 'Add vacation' : 'New request'}</button>
+        <button className="primary" disabled={!canRequest} title={!canRequest ? 'Set your contract start date first' : undefined} onClick={() => setShowForm(true)}>+ Add vacation</button>
       </div>
 
       <section className="contract-card">
@@ -834,24 +784,23 @@ function MyVacationView({
         {balanceLoading || !balance ? <InlineLoading /> : balance.contract_start_date == null ? (
           <div className="balance-missing">Set your contract start date above to calculate your prorated allowance.</div>
         ) : (
-          <div className="balance-stats balance-stats-six">
+          <div className="balance-stats balance-stats-five">
             <div className="balance-primary"><strong>{balance.remaining_days}</strong><span>days left</span></div>
             <div><strong>{balance.allowance_days}</strong><span>current-year entitlement</span></div>
             <div><strong>{balance.carryover_days > 0 ? '+' : ''}{balance.carryover_days}</strong><span>carried from previous years</span></div>
             <div><strong>{balance.full_year_allowance_days}</strong><span>full-year entitlement</span></div>
-            <div><strong>{balance.used_days}</strong><span>approved / booked</span></div>
-            <div><strong>{balance.pending_days}</strong><span>pending</span></div>
+            <div><strong>{balance.used_days}</strong><span>booked</span></div>
           </div>
         )}
-        <p className="balance-note">The joining year is prorated by the exact contract start date and rounded to the nearest half day. Positive and negative approved balances carry automatically into every following year. Pending requests are shown separately and are not carried until approved. Charged days exclude Saturdays, Sundays, and official Canton of Vaud public holidays.</p>
+        <p className="balance-note">The joining year is prorated by the contract start date and rounded to the nearest half day. Positive and negative balances carry automatically into every following year. Charged days exclude Saturdays, Sundays, and official Canton of Vaud public holidays.</p>
       </section>
 
       <div className="list-card request-list-card">
         {loading ? <InlineLoading /> : requests.length === 0 ? (
-          <EmptyState title="No vacation yet" text="Your requests will appear here." />
+          <EmptyState title="No vacation yet" text="Your vacation entries will appear here." />
         ) : requests.map((request) => {
           const chargedDays = vacationDaysCharged(request.start_date, request.end_date, request.start_part, request.end_part)
-          const canCancel = request.status === 'approved' && request.start_date >= isoDate(new Date())
+          const canCancel = request.status === 'approved'
           return (
             <div className="request-row" key={request.request_id}>
               <div className={`status-dot ${request.status}`} />
@@ -859,27 +808,14 @@ function MyVacationView({
                 <strong>{formatVacationRange(request.start_date, request.end_date, request.start_part, request.end_part)}</strong>
                 <span>{chargedDays} vacation day{chargedDays === 1 ? '' : 's'} charged{request.note ? ` · ${request.note}` : ''}</span>
               </div>
-              <span className={`status-pill ${request.status}`}>{request.status}</span>
-              {request.status === 'pending' && (
-                <button className="text-button danger-text" onClick={async () => {
-                  try {
-                    await withdrawVacation(request.request_id)
-                    await reloadAll()
-                    await onChanged()
-                    setNotice({ type: 'success', text: 'Pending request withdrawn.' })
-                  } catch (error) {
-                    setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not withdraw the request.' })
-                  }
-                }}>Withdraw</button>
-              )}
+              <span className={`status-pill ${request.status}`}>{request.status === 'approved' ? 'booked' : request.status}</span>
               {canCancel && (
                 <button className="text-button danger-text" onClick={async () => {
                   if (!window.confirm(`Cancel your vacation ${formatVacationRange(request.start_date, request.end_date, request.start_part, request.end_part)}? It will disappear from the group calendar immediately.`)) return
                   try {
                     await cancelVacation(request.request_id)
                     await reloadAll()
-                    await onChanged()
-                    setNotice({ type: 'success', text: 'Vacation cancelled. No leader approval or notification was required.' })
+                    setNotice({ type: 'success', text: 'Vacation cancelled and removed from the shared calendar.' })
                   } catch (error) {
                     setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not cancel the vacation.' })
                   }
@@ -893,96 +829,17 @@ function MyVacationView({
         <VacationModal
           group={group}
           onClose={() => setShowForm(false)}
-          onSaved={async (status) => {
+          onSaved={async () => {
             setShowForm(false)
             await reloadAll()
-            await onChanged()
-            setNotice({ type: 'success', text: status === 'approved' ? 'Vacation added.' : 'Request sent for approval.' })
+            setNotice({ type: 'success', text: 'Vacation added.' })
           }}
-          onEmailWarning={(text) => setNotice({ type: 'warning', text })}
         />
       )}
     </>
   )
 }
 
-function ApprovalsView({
-  group,
-  setNotice,
-  onChanged,
-}: {
-  group: GroupSummary
-  setNotice: (notice: Notice) => void
-  onChanged: () => Promise<void>
-}) {
-  const [requests, setRequests] = useState<VacationRequest[]>([])
-  const [loading, setLoading] = useState(true)
-  const [workingId, setWorkingId] = useState('')
-
-  async function load() {
-    setLoading(true)
-    try {
-      setRequests(await getPendingRequests(group.group_id))
-    } catch (error) {
-      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not load approvals.' })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { load() }, [group.group_id])
-
-  async function decide(requestId: string, decision: 'approved' | 'rejected') {
-    setWorkingId(requestId)
-    try {
-      await reviewVacation(requestId, decision)
-      await load()
-      await onChanged()
-      setNotice({ type: 'success', text: decision === 'approved' ? 'Vacation approved and added to the calendar.' : 'Vacation request rejected.' })
-    } catch (error) {
-      setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not review the request.' })
-    } finally {
-      setWorkingId('')
-    }
-  }
-
-  return (
-    <>
-      <div className="content-header">
-        <div>
-          <p className="eyebrow">LEADER</p>
-          <h1>Vacation approvals</h1>
-          <p>Approve a request to make it visible in the group calendar.</p>
-        </div>
-      </div>
-      <div className="approval-grid">
-        {loading ? <InlineLoading /> : requests.length === 0 ? (
-          <EmptyState title="All caught up" text="There are no pending vacation requests." />
-        ) : requests.map((request) => (
-          <article className="approval-card" key={request.request_id}>
-            <div className="avatar">{initials(request.requester_name)}</div>
-            <div className="approval-body">
-              <div className="approval-title">
-                <div>
-                  <strong>{request.requester_name}</strong>
-                  <span>{request.requester_email}</span>
-                </div>
-                <span className="status-pill pending">pending</span>
-              </div>
-              <h3>{formatVacationRange(request.start_date, request.end_date, request.start_part, request.end_part)}</h3>
-              <p className="days-label">{vacationDaysCharged(request.start_date, request.end_date, request.start_part, request.end_part)} vacation day{vacationDaysCharged(request.start_date, request.end_date, request.start_part, request.end_part) === 1 ? '' : 's'} charged · weekends and Vaud public holidays excluded</p>
-              {request.note && <blockquote>{request.note}</blockquote>}
-              <div className="approval-actions">
-                <button className="reject" disabled={workingId === request.request_id} onClick={() => decide(request.request_id, 'rejected')}>Reject</button>
-                <button className="approve" disabled={workingId === request.request_id} onClick={() => decide(request.request_id, 'approved')}>✓ Approve</button>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-    </>
-  )
-}
 
 function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (notice: Notice) => void }) {
   const currentYear = new Date().getFullYear()
@@ -997,6 +854,7 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [contractStart, setContractStart] = useState('')
+  const [startedThisYear, setStartedThisYear] = useState(false)
   const [newRole, setNewRole] = useState<'member' | 'leader'>('member')
   const [busy, setBusy] = useState(false)
   const [roleWorkingId, setRoleWorkingId] = useState('')
@@ -1023,21 +881,23 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
 
   async function add(event: React.FormEvent) {
     event.preventDefault()
+    if (startedThisYear && !contractStart) {
+      setNotice({ type: 'error', text: 'Enter the contract start date for someone who started this year.' })
+      return
+    }
     setBusy(true)
     try {
-      await addGroupMember(group.group_id, email, name, newRole, contractStart || null)
+      const baselineDate = startedThisYear ? contractStart : `${currentYear}-01-01`
+      await addGroupMember(group.group_id, email, name, newRole, baselineDate)
       setEmail('')
       setName('')
       setContractStart('')
+      setStartedThisYear(false)
       setNewRole('member')
       await load()
       setNotice({
         type: 'success',
-        text: newRole === 'leader'
-          ? 'Group leader added.'
-          : contractStart
-            ? 'Member added. Their allowance will be prorated from the contract start date.'
-            : 'Member added. They can set their contract start date when they sign in.',
+        text: 'Person added. They can create or sign in to an account using this exact email address; the group will appear automatically.',
       })
     } catch (error) {
       setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not add the member.' })
@@ -1085,14 +945,14 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
   const canManageLeaders = members.some((member) => member.is_owner && member.is_me)
 
   async function changeLeaderRole(member: GroupMember, makeLeader: boolean) {
-    const action = makeLeader ? 'make this person a group leader' : 'remove this person’s leader rights'
+    const action = makeLeader ? 'make this person a group administrator' : 'remove this person’s administrator rights'
     if (!window.confirm(`${makeLeader ? 'Make' : 'Change'} ${member.display_name}: ${action}?`)) return
     setRoleWorkingId(member.member_id)
     try {
       if (makeLeader) await promoteGroupLeader(group.group_id, member.member_id)
       else await demoteGroupLeader(group.group_id, member.member_id)
       await load()
-      setNotice({ type: 'success', text: makeLeader ? `${member.display_name} is now a group leader.` : `${member.display_name} is now a regular member.` })
+      setNotice({ type: 'success', text: makeLeader ? `${member.display_name} is now a group administrator.` : `${member.display_name} is now a regular member.` })
     } catch (error) {
       setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not change leader rights.' })
     } finally {
@@ -1106,7 +966,7 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
         <div>
           <p className="eyebrow">LEADER</p>
           <h1>Group members</h1>
-          <p>Group leaders can manage contract dates, vacation balances and approvals. Only the original group leader can grant or remove leader rights.</p>
+          <p>Group administrators can add people and manage contract dates and vacation balances. There is no vacation approval workflow.</p>
         </div>
         <label className="year-filter">Balance year
           <select value={balanceYear} onChange={(e) => setBalanceYear(Number(e.target.value))}>
@@ -1127,7 +987,7 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
                   {balance && balance.contract_start_date ? (
                     <div className="leader-balance-summary">
                       <strong>{balance.remaining_days} left</strong>
-                      <span>{balance.carryover_days > 0 ? '+' : ''}{balance.carryover_days} carry-over · {balance.used_days} approved · {balance.pending_days} pending · {balance.allowance_days} current-year / {balance.full_year_allowance_days} full-year</span>
+                      <span>{balance.carryover_days > 0 ? '+' : ''}{balance.carryover_days} carry-over · {balance.used_days} booked · {balance.allowance_days} current-year / {balance.full_year_allowance_days} full-year</span>
                     </div>
                   ) : (
                     <div className="leader-balance-summary missing-contract">
@@ -1137,7 +997,7 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
                   )}
                 </div>
                 <div className="member-role-stack">
-                  <span className={`role-pill ${member.role}`}>{member.is_owner ? 'Original leader' : member.role === 'leader' ? 'Group leader' : 'Member'}</span>
+                  <span className={`role-pill ${member.role}`}>{member.is_owner ? 'Original administrator' : member.role === 'leader' ? 'Group administrator' : 'Member'}</span>
                   {member.is_me && <span className="you-pill">You</span>}
                 </div>
                 <span className={`joined-pill ${member.joined ? 'yes' : ''}`}>{member.joined ? 'Account created' : 'No account yet'}</span>
@@ -1170,31 +1030,29 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
                     </button>
                   </div>
                 </div>
-                {((canManageLeaders && !member.is_owner) || member.role !== 'leader') && (
-                  <div className="member-row-actions">
-                    {canManageLeaders && !member.is_owner && (
-                      <button
-                        className="ghost compact-button leader-toggle"
-                        disabled={roleWorkingId === member.member_id}
-                        onClick={() => changeLeaderRole(member, member.role !== 'leader')}
-                      >
-                        {roleWorkingId === member.member_id ? 'Saving…' : member.role === 'leader' ? 'Remove leader rights' : 'Make leader'}
-                      </button>
-                    )}
-                    {member.role !== 'leader' && (
-                      <button className="ghost compact-button remove-member-button" onClick={async () => {
-                        if (!window.confirm(`Remove ${member.display_name} from this group?`)) return
-                        try {
-                          await removeGroupMember(group.group_id, member.member_id)
-                          await load()
-                          setNotice({ type: 'success', text: 'Member removed.' })
-                        } catch (error) {
-                          setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not remove the member.' })
-                        }
-                      }}>Remove member</button>
-                    )}
-                  </div>
-                )}
+                <div className="member-row-actions">
+                  {canManageLeaders && !member.is_owner && (
+                    <button
+                      className="ghost compact-button leader-toggle"
+                      disabled={roleWorkingId === member.member_id}
+                      onClick={() => changeLeaderRole(member, member.role !== 'leader')}
+                    >
+                      {roleWorkingId === member.member_id ? 'Saving…' : member.role === 'leader' ? 'Remove administrator rights' : 'Make administrator'}
+                    </button>
+                  )}
+                  {member.role !== 'leader' && (
+                    <button className="ghost compact-button remove-member-button" onClick={async () => {
+                      if (!window.confirm(`Remove ${member.display_name} from this group?`)) return
+                      try {
+                        await removeGroupMember(group.group_id, member.member_id)
+                        await load()
+                        setNotice({ type: 'success', text: 'Member removed.' })
+                      } catch (error) {
+                        setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not remove the member.' })
+                      }
+                    }}>Remove member</button>
+                  )}
+                </div>
               </div>
             )
           })}
@@ -1202,22 +1060,28 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
         <aside className="add-member-card">
           <p className="eyebrow">ADD PERSON</p>
           <h3>Give someone access</h3>
-          <p>Enter the exact email address they will use to create their account. You can enter their contract start date now, or leave it blank and let them set it after signing in.</p>
+          <p>Enter the exact email address they will use for their account. No invitation email is sent. When they create or sign in with that address, this group appears automatically. If they started this year, enter the exact contract start date; otherwise the planner uses 1 January of this year as the balance baseline.</p>
           <form className="stack-form" onSubmit={add}>
             <label>Name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Team member" /></label>
             <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="member@example.org" /></label>
-            <label>Contract start date <span className="optional">optional</span>
-              <input type="date" value={contractStart} onChange={(e) => setContractStart(e.target.value)} />
+            <label className="checkbox-label">
+              <input type="checkbox" checked={startedThisYear} onChange={(e) => { setStartedThisYear(e.target.checked); if (!e.target.checked) setContractStart('') }} />
+              Started their contract this year
             </label>
+            {startedThisYear && (
+              <label>Contract start date
+                <input type="date" required value={contractStart} min={`${currentYear}-01-01`} max={`${currentYear}-12-31`} onChange={(e) => setContractStart(e.target.value)} />
+              </label>
+            )}
             {canManageLeaders && (
               <label>Role
                 <select value={newRole} onChange={(e) => setNewRole(e.target.value as 'member' | 'leader')}>
                   <option value="member">Member</option>
-                  <option value="leader">Group leader</option>
+                  <option value="leader">Group administrator</option>
                 </select>
               </label>
             )}
-            <button className="primary" disabled={busy}>{busy ? 'Adding…' : newRole === 'leader' ? 'Add group leader' : 'Add member'}</button>
+            <button className="primary" disabled={busy}>{busy ? 'Adding…' : newRole === 'leader' ? 'Add administrator' : 'Add member'}</button>
           </form>
         </aside>
       </div>
