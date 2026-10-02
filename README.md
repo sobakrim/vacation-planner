@@ -1,4 +1,4 @@
-# Group Vacation Planner v0.6.1
+# Group Vacation Planner v0.6.2
 
 A privacy-conscious group vacation calendar built with React, GitHub Pages and Supabase.
 
@@ -36,11 +36,12 @@ supabase/003_accounts_multi_leaders.sql
 supabase/004_contract_proration_half_days.sql
 supabase/005_balance_carryover.sql
 supabase/006_no_approval_member_invites.sql
+supabase/007_membership_scoped_calendar.sql
 ```
 
 Despite the historical filename of migration 006, v0.6.1 does **not** send invitations. The useful database behavior from that migration remains: direct booking, past entries/cancellation, and email-based membership claiming.
 
-If migration 006 is already installed, **no new SQL migration is required for v0.6.1**.
+For v0.6.2, run `supabase/007_membership_scoped_calendar.sql` after migration 006. It removes legacy orphaned vacation entries from the shared calendar and ensures only current group members are shown.
 
 ## Authentication setup
 
@@ -66,9 +67,9 @@ VITE_SUPABASE_PUBLISHABLE_KEY
 
 Then enable **Settings → Pages → Source → GitHub Actions**.
 
-## Upgrade from v0.6.0
+## Upgrade from v0.6.1
 
-Replace the frontend files with v0.6.1 and redeploy GitHub Pages. No database migration and no Edge Function deployment are needed.
+Replace the frontend files with v0.6.2, run `supabase/007_membership_scoped_calendar.sql`, and redeploy GitHub Pages. No Edge Function deployment is needed.
 
 If `invite-group-member` is still deployed in Supabase, it can be deleted because the application no longer calls it.
 

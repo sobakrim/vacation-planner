@@ -858,6 +858,7 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
   const [newRole, setNewRole] = useState<'member' | 'leader'>('member')
   const [busy, setBusy] = useState(false)
   const [roleWorkingId, setRoleWorkingId] = useState('')
+  const [removingMemberId, setRemovingMemberId] = useState('')
 
   async function load() {
     setLoading(true)
@@ -1040,17 +1041,27 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
                       {roleWorkingId === member.member_id ? 'Saving…' : member.role === 'leader' ? 'Remove administrator rights' : 'Make administrator'}
                     </button>
                   )}
-                  {member.role !== 'leader' && (
-                    <button className="ghost compact-button remove-member-button" onClick={async () => {
-                      if (!window.confirm(`Remove ${member.display_name} from this group?`)) return
-                      try {
-                        await removeGroupMember(group.group_id, member.member_id)
-                        await load()
-                        setNotice({ type: 'success', text: 'Member removed.' })
-                      } catch (error) {
-                        setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not remove the member.' })
-                      }
-                    }}>Remove member</button>
+                  {!member.is_owner && (member.role === 'member' || canManageLeaders) && (
+                    <button
+                      className="ghost compact-button remove-member-button"
+                      disabled={removingMemberId === member.member_id}
+                      onClick={async () => {
+                        const extra = member.role === 'leader' ? ' Their administrator rights will also be removed.' : ''
+                        if (!window.confirm(`Delete ${member.display_name} from this group? Their vacation entries will be removed from this group calendar.${extra}`)) return
+                        setRemovingMemberId(member.member_id)
+                        try {
+                          await removeGroupMember(group.group_id, member.member_id)
+                          await load()
+                          setNotice({ type: 'success', text: `${member.display_name} was deleted from the group. Their vacation entries are no longer shown in this group calendar.` })
+                        } catch (error) {
+                          setNotice({ type: 'error', text: error instanceof Error ? error.message : 'Could not delete the member.' })
+                        } finally {
+                          setRemovingMemberId('')
+                        }
+                      }}
+                    >
+                      {removingMemberId === member.member_id ? 'Deleting…' : 'Delete member'}
+                    </button>
                   )}
                 </div>
               </div>
