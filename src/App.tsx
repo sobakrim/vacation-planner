@@ -1071,7 +1071,7 @@ function MembersView({ group, setNotice }: { group: GroupSummary; setNotice: (no
         <aside className="add-member-card">
           <p className="eyebrow">ADD PERSON</p>
           <h3>Give someone access</h3>
-          <p>Enter the exact email address they will use for their account. No invitation email is sent. When they create or sign in with that address, this group appears automatically. If they started this year, enter the exact contract start date; otherwise the planner uses 1 January of this year as the balance baseline.</p>
+          <p>Enter the exact email address they will use for their account. When they create or sign in with that address, this group appears automatically. If they started this year, enter the exact contract start date; otherwise the planner uses 1 January of this year as the balance baseline.</p>
           <form className="stack-form" onSubmit={add}>
             <label>Name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Team member" /></label>
             <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="member@example.org" /></label>
